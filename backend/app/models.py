@@ -1,0 +1,78 @@
+from typing import Literal, TypedDict
+from pydantic import BaseModel, Field
+
+class Email(BaseModel):
+    id: str
+    sender: str
+    sender_name: str
+    subject: str
+    body: str
+    timestamp: str
+
+class EmailClassification(BaseModel):
+    """LLM structured output. User-facing explanation only — no chain-of-thought."""
+    intent: Literal["royalty_payment", "publishing_status", "printing_issue",
+                     "cover_design", "distribution", "isbn_metadata",
+                     "general_inquiry", "complaint", "spam"]
+    urgency: int = Field(ge=1, le=5, description="1=low, 5=critical")
+    key_details: list[str] = Field(description="Important facts extracted from the email")
+    missing_information: list[str] = Field(description="Information NOT present but needed")
+    confidence: float = Field(ge=0.0, le=1.0)
+    classification_explanation: str = Field(
+        description="Short, user-facing explanation based ONLY on evidence "
+                    "from the email. Example: 'The email mentions an incorrect "
+                    "ISBN for an existing order, so it matches isbn_metadata.'"
+    )
+
+class RecommendedAction(BaseModel):
+    action_type: Literal["auto_reply", "route_to_team", "request_more_info",
+                          "archive", "escalate", "issue_refund", "modify_metadata"]
+    description: str
+    target_team: str | None = None
+
+class GuardrailResult(BaseModel):
+    approval_required: bool
+    missing_info_block: bool
+    reasons: list[str]
+    risk_level: Literal["low", "medium", "high"]
+
+class HumanDecision(BaseModel):
+    decision: Literal["approve", "reject", "correct"]
+    corrected_intent: str | None = None
+    notes: str | None = None
+
+class HumanCorrection(BaseModel):
+    email_subject: str
+    email_body: str
+    original_intent: str
+    corrected_intent: str
+    notes: str
+    timestamp: str
+
+class EmailProcessingState(TypedDict):
+    # Input
+    email: Email
+    supplementary_info: str | None         # Additional info provided by user (missing-info flow)
+
+    # Feedback context
+    corrections: str                       # Formatted few-shot text from relevant past corrections
+
+    # LLM output
+    classification: EmailClassification | None
+
+    # Deterministic outputs
+    recommended_action: RecommendedAction | None
+    guardrail_result: GuardrailResult | None
+    approval_required: bool
+    missing_info_block: bool               # True if missing info halts execution
+
+    # Human interaction
+    human_decision: HumanDecision | None   # "approve" | "reject" | "correct"
+
+    # Reliability
+    retry_count: int                       # LLM retries used (max: MAX_LLM_RETRIES = 2)
+    correction_count: int                  # Human corrections so far (max: MAX_CORRECTIONS = 3)
+
+    # Observability
+    processing_log: list[str]              # Timestamped log of every state transition
+    final_status: str                      # "executed" | "rejected" | "manual_review" | "error" | "pending_approval" | "pending_info" | "processing"
