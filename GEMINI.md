@@ -1,0 +1,21 @@
+# Project Guidelines & Rules
+
+## Git Commit Conventions
+All Git commits must strictly follow the **Conventional Commits** standard. Avoid generic commit messages. Use professional, descriptive messages formatted as:
+
+`<type>(<scope>): <short summary>`
+
+### Allowed Types:
+- `feat:` — New features or functional capabilities
+- `fix:` — Bug fixes and error trace corrections
+- `refactor:` — Code restructuring without changing external behavior
+- `docs:` — Documentation updates (README, design notes, inline docs)
+- `style:` — Formatting, styling, CSS adjustments
+- `test:` — Adding or updating test cases
+- `chore:` — Dependencies, build scripts, configuration changes
+
+### Examples:
+- `feat(policy): add urgency threshold to guardrail evaluation`
+- `fix(backend): update sqlite checkpointer lifespan context manager`
+- `docs(readme): add uv setup and execution guide`
+- `chore(deps): pin requirements with uv pip compile`
