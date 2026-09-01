@@ -1,6 +1,21 @@
+import { useEffect, useRef } from "react";
 import type { ProcessingResponse } from "../types";
 
-export default function PipelineView({ state }: { state: ProcessingResponse["state"] | null }) {
+interface Props {
+  state: ProcessingResponse["state"] | null;
+  isStreaming?: boolean;
+}
+
+export default function PipelineView({ state, isStreaming = false }: Props) {
+  const logContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll execution log to bottom as new events arrive
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [state?.processing_log]);
+
   if (!state) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-xs p-6 text-center space-y-3 font-mono">
@@ -8,7 +23,7 @@ export default function PipelineView({ state }: { state: ProcessingResponse["sta
           ⚙️
         </div>
         <p className="font-sans text-sm text-foreground font-semibold">No Active Workflow</p>
-        <p className="max-w-xs text-muted-foreground">Select an author email and click <span className="text-primary font-semibold">Process with AI</span> to run the LangGraph pipeline.</p>
+        <p className="max-w-xs text-muted-foreground">Select an author email to automatically trigger the LangGraph AI pipeline in real-time.</p>
       </div>
     );
   }
@@ -19,15 +34,35 @@ export default function PipelineView({ state }: { state: ProcessingResponse["sta
   const isError = status === "error";
   const isRejected = status === "rejected";
 
+  const hasClassified = !!state.classification;
+  const hasAction = !!state.recommended_action;
+  const hasGuardrail = !!state.guardrail_result;
+
   const steps = [
-    { name: "Ingest Email", active: true, done: true },
-    { name: "Fetch Corrections & Classify", active: true, done: !isError, error: isError },
-    { name: "Determine Action", active: !isError, done: !isError && !!state.recommended_action },
+    { 
+      name: "Ingest Email", 
+      active: true, 
+      done: true 
+    },
+    { 
+      name: "Fetch Corrections & Classify", 
+      active: true, 
+      done: hasClassified && !isError, 
+      pending: isStreaming && !hasClassified,
+      error: isError 
+    },
+    { 
+      name: "Determine Action", 
+      active: hasClassified, 
+      done: hasAction && !isError,
+      pending: isStreaming && hasClassified && !hasAction
+    },
     { 
       name: "Policy Check", 
-      active: !!state.guardrail_result, 
-      done: !!state.guardrail_result,
-      label: state.missing_info_block ? "Missing Info Block" : state.approval_required ? "Approval Required" : "Safe Auto Execution"
+      active: hasAction || hasGuardrail, 
+      done: hasGuardrail,
+      pending: isStreaming && hasAction && !hasGuardrail,
+      label: state.missing_info_block ? "Missing Info Block" : state.approval_required ? "Approval Required" : hasGuardrail ? "Safe Auto Execution" : undefined
     },
     {
       name: "Human Approval",
@@ -44,7 +79,7 @@ export default function PipelineView({ state }: { state: ProcessingResponse["sta
     },
     { 
       name: "Execute Action", 
-      active: status === "executed", 
+      active: status === "executed" || (!state.approval_required && !state.missing_info_block && hasGuardrail), 
       done: status === "executed" 
     }
   ];
@@ -55,8 +90,12 @@ export default function PipelineView({ state }: { state: ProcessingResponse["sta
         <h3 className="font-bold text-sm text-foreground flex items-center gap-2 tracking-tight">
           <span className="text-primary text-base">⚡</span> LangGraph State Machine
         </h3>
-        <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
-          Stateful DAG
+        <span className={`text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded border ${
+          isStreaming 
+            ? "bg-primary/20 text-primary border-primary animate-pulse" 
+            : "bg-primary/10 text-primary border-primary/20"
+        }`}>
+          {isStreaming ? "Live Executing" : "Stateful DAG"}
         </span>
       </div>
       
@@ -80,9 +119,9 @@ export default function PipelineView({ state }: { state: ProcessingResponse["sta
             iconColor = "text-rose-500 font-bold";
             circleBg = "bg-rose-500/10 border-rose-500/30";
           } else if (step.pending) {
-            icon = "⏸";
-            iconColor = "text-amber-500";
-            circleBg = "bg-amber-500/10 border-amber-500/30 animate-pulse-amber";
+            icon = "⚡";
+            iconColor = "text-amber-500 animate-spin";
+            circleBg = "bg-amber-500/10 border-amber-500/30 animate-pulse";
           } else if (step.active) {
             icon = "○";
             iconColor = "text-primary";
@@ -120,7 +159,10 @@ export default function PipelineView({ state }: { state: ProcessingResponse["sta
             <h4 className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground">Execution Log</h4>
             <span className="text-[10px] font-mono text-muted-foreground">{state.processing_log.length} events</span>
           </div>
-          <div className="bg-background border border-border/80 rounded-lg p-3 h-36 overflow-y-auto font-mono text-[11px] text-muted-foreground space-y-1.5 leading-relaxed">
+          <div 
+            ref={logContainerRef}
+            className="bg-background border border-border/80 rounded-lg p-3 h-36 overflow-y-auto font-mono text-[11px] text-muted-foreground space-y-1.5 leading-relaxed scroll-smooth"
+          >
             {state.processing_log.map((log, i) => (
               <div key={i} className="text-foreground/80 hover:text-primary transition-colors">
                 {log}

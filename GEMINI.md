@@ -23,3 +23,4 @@ All Git commits must strictly follow the **Conventional Commits** standard. Avoi
 ## Git Workflow & Permissions
 - **NEVER execute `git commit` or `git push` without explicit user permission.**
 - Always present the proposed code changes and suggested Conventional Commit message, and wait for explicit user approval before staging, committing, or pushing to remote repositories.
+- **NEVER auto-merge feature branches into `develop` or `main`.** Always push feature branches independently and allow the user to review and merge via GitHub Pull Requests.

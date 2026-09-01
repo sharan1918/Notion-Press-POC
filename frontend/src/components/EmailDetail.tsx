@@ -6,6 +6,7 @@ import MissingInfoForm from "./MissingInfoForm";
 interface Props {
   email: Email;
   processingState?: ProcessingResponse;
+  isStreaming?: boolean;
   onProcess: (id: string) => void;
   onApprove: (threadId: string) => void;
   onReject: (threadId: string) => void;
@@ -31,11 +32,18 @@ function getAvatarColor(name: string) {
 }
 
 export default function EmailDetail({ 
-  email, processingState, onProcess, onApprove, onReject, onCorrect, onProvideInfo 
+  email, 
+  processingState, 
+  isStreaming = false,
+  onProcess, 
+  onApprove, 
+  onReject, 
+  onCorrect, 
+  onProvideInfo 
 }: Props) {
-  const isProcessing = processingState?.state.final_status === "processing";
   const state = processingState?.state;
   const threadId = processingState?.thread_id;
+  const isProcessing = isStreaming || state?.final_status === "processing";
 
   const parts = email.sender_name.trim().split(" ");
   const initials = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : parts[0].slice(0, 2);
@@ -57,22 +65,30 @@ export default function EmailDetail({
           </button>
         </div>
 
-        {/* AI Action Trigger */}
-        <div>
-          {!state && !isProcessing && (
+        {/* AI Action Trigger & Live Status */}
+        <div className="flex items-center gap-2">
+          {isProcessing ? (
+            <span className="text-xs text-primary font-mono flex items-center gap-2 px-2.5 py-1 bg-primary/10 rounded-md border border-primary/20">
+              <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+              <span className="font-semibold">Live AI Triaging...</span>
+            </span>
+          ) : state ? (
             <button 
               onClick={() => onProcess(email.id)}
-              className="bg-secondary/70 hover:bg-secondary text-foreground hover:text-primary hover:border-primary/40 border border-border px-3.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+              className="bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border px-2.5 py-1 rounded text-xs font-mono flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Re-run AI pipeline"
+            >
+              <span>🔄</span>
+              <span>Re-analyze</span>
+            </button>
+          ) : (
+            <button 
+              onClick={() => onProcess(email.id)}
+              className="bg-secondary/70 hover:bg-secondary text-foreground hover:text-primary hover:border-primary/40 border border-border px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
             >
               <span className="text-sm">🤖</span>
               <span>Process with AI</span>
             </button>
-          )}
-          {isProcessing && (
-            <span className="text-xs text-primary font-mono flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
-              Analyzing...
-            </span>
           )}
         </div>
       </div>
@@ -135,13 +151,31 @@ export default function EmailDetail({
         </div>
 
         {/* --- AI Triage Copilot Section --- */}
-        {state && !isProcessing && (
+        {isProcessing && !state?.classification && (
+          <div className="mt-8 pt-6 border-t-2 border-border/80 space-y-4 animate-pulse">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold font-mono text-primary uppercase">
+                <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+                <span>Connecting to LangGraph AI Pipeline...</span>
+              </div>
+              <span className="text-[10px] font-mono text-muted-foreground">Streaming nodes</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="h-20 bg-secondary/50 rounded-xl border border-border/60"></div>
+              <div className="h-20 bg-secondary/50 rounded-xl border border-border/60"></div>
+              <div className="h-20 bg-secondary/50 rounded-xl border border-border/60"></div>
+            </div>
+            <div className="h-24 bg-secondary/30 rounded-xl border border-border/60"></div>
+          </div>
+        )}
+
+        {state && state.classification && (
           <div className="mt-8 pt-6 border-t-2 border-border/80 space-y-5">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-primary flex items-center gap-1.5">
-                <span>⚡</span> AI Triage Intelligence (LangGraph Policy)
+                <span>⚡</span> AI Triage Intelligence {isProcessing && <span className="text-[10px] text-primary lowercase animate-pulse font-normal">(streaming...)</span>}
               </h3>
-              <span className="text-[10px] font-mono text-muted-foreground">Thread: {threadId}</span>
+              {threadId && <span className="text-[10px] font-mono text-muted-foreground">Thread: {threadId}</span>}
             </div>
 
             <ProcessingResult state={state} />
