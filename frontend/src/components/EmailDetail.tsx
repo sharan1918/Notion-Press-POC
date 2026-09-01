@@ -13,6 +13,23 @@ interface Props {
   onProvideInfo: (threadId: string, info: string, attachments: string[]) => void;
 }
 
+// Avatar color helper
+const avatarColors = [
+  "bg-amber-700 text-amber-100",
+  "bg-purple-700 text-purple-100",
+  "bg-blue-700 text-blue-100",
+  "bg-emerald-700 text-emerald-100",
+  "bg-rose-700 text-rose-100",
+  "bg-cyan-700 text-cyan-100",
+  "bg-indigo-700 text-indigo-100",
+];
+
+function getAvatarColor(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash += name.charCodeAt(i);
+  return avatarColors[hash % avatarColors.length];
+}
+
 export default function EmailDetail({ 
   email, processingState, onProcess, onApprove, onReject, onCorrect, onProvideInfo 
 }: Props) {
@@ -20,56 +37,115 @@ export default function EmailDetail({
   const state = processingState?.state;
   const threadId = processingState?.thread_id;
 
+  const parts = email.sender_name.trim().split(" ");
+  const initials = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : parts[0].slice(0, 2);
+  const avatarColor = getAvatarColor(email.sender_name);
+
   return (
-    <div className="flex-1 overflow-y-auto p-8 bg-background">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-lg font-medium">
-              {email.sender_name.charAt(0)}
+    <div className="flex-1 overflow-y-auto bg-background flex flex-col h-full">
+      {/* Top Action Ribbon (Outlook Style) */}
+      <div className="border-b border-border bg-card px-6 py-2.5 flex items-center justify-between shrink-0 select-none">
+        <div className="flex items-center gap-4 text-xs font-semibold text-muted-foreground">
+          <button className="hover:text-foreground flex items-center gap-1 cursor-pointer">
+            <span>↩</span> Reply
+          </button>
+          <button className="hover:text-foreground flex items-center gap-1 cursor-pointer">
+            <span>↩↩</span> Reply all
+          </button>
+          <button className="hover:text-foreground flex items-center gap-1 cursor-pointer">
+            <span>↪</span> Forward
+          </button>
+        </div>
+
+        {/* AI Action Trigger */}
+        <div>
+          {!state && !isProcessing && (
+            <button 
+              onClick={() => onProcess(email.id)}
+              className="bg-secondary/70 hover:bg-secondary text-foreground hover:text-primary hover:border-primary/40 border border-border px-3.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+            >
+              <span className="text-sm">🤖</span>
+              <span>Process with AI</span>
+            </button>
+          )}
+          {isProcessing && (
+            <span className="text-xs text-primary font-mono flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+              Analyzing...
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Main Email Viewport */}
+      <div className="p-6 md:p-8 space-y-6 max-w-4xl">
+        {/* Subject Header */}
+        <h1 className="text-lg md:text-xl font-bold text-foreground tracking-tight">
+          {email.subject}
+        </h1>
+
+        {/* Sender Info Row */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${avatarColor}`}>
+              {initials.toUpperCase()}
             </div>
             <div>
-              <h2 className="text-xl font-semibold">{email.sender_name}</h2>
-              <p className="text-sm text-muted-foreground">{email.sender}</p>
-            </div>
-            <div className="ml-auto text-sm text-muted-foreground">
-              {new Date(email.timestamp).toLocaleString()}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-foreground">{email.sender_name}</span>
+                <span className="text-xs text-muted-foreground">&lt;{email.sender}&gt;</span>
+              </div>
+              <p className="text-xs text-muted-foreground">To: Notion Press Author Support &lt;support@notionpress.com&gt;</p>
             </div>
           </div>
-          
-          <h1 className="text-2xl font-bold mb-6">{email.subject}</h1>
-          <div className="p-6 bg-card rounded-lg border border-border shadow-sm text-foreground whitespace-pre-wrap leading-relaxed">
-            {email.body}
+
+          <div className="text-xs text-muted-foreground font-mono shrink-0">
+            {new Date(email.timestamp).toLocaleString(undefined, { 
+              weekday: 'short', month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' 
+            })}
           </div>
         </div>
 
-        {!state && !isProcessing && (
-          <div className="flex justify-center mt-12">
-            <button 
-              onClick={() => onProcess(email.id)}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-8 py-3 rounded-full shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 flex items-center gap-2"
-            >
-              <span className="text-xl">🤖</span> Process with AI
-            </button>
+        {/* Attachment Pill (If any) */}
+        {state?.attachments && state.attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1 pb-2">
+            {state.attachments.map((att, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded bg-secondary border border-border text-xs font-mono">
+                <span>📄</span>
+                <span className="font-medium text-foreground">{att}</span>
+                <span className="text-muted-foreground text-[10px]">34 KB ▾</span>
+              </div>
+            ))}
           </div>
         )}
 
-        {isProcessing && (
-          <div className="mt-8 p-6 bg-card border border-border rounded-lg animate-shimmer">
-            <div className="h-6 w-1/3 bg-background/50 rounded mb-4"></div>
-            <div className="h-4 w-full bg-background/50 rounded mb-2"></div>
-            <div className="h-4 w-2/3 bg-background/50 rounded"></div>
-          </div>
-        )}
+        {/* Email Body Text */}
+        <div className="text-xs md:text-sm text-foreground leading-relaxed whitespace-pre-wrap font-sans pt-2 border-t border-border/40">
+          {email.body}
+        </div>
 
+        {/* Bottom Quick Reply Buttons */}
+        <div className="flex items-center gap-3 pt-4 border-t border-border/40">
+          <button className="px-4 py-1.5 rounded bg-secondary hover:bg-secondary/80 border border-border text-xs font-medium text-foreground flex items-center gap-1.5">
+            <span>↩</span> Reply
+          </button>
+          <button className="px-4 py-1.5 rounded bg-secondary hover:bg-secondary/80 border border-border text-xs font-medium text-foreground flex items-center gap-1.5">
+            <span>↪</span> Forward
+          </button>
+        </div>
+
+        {/* --- AI Triage Copilot Section --- */}
         {state && !isProcessing && (
-          <div className="mt-8 border-t border-border pt-8">
-            <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-              <span>🤖</span> AI Analysis
-            </h3>
-            
+          <div className="mt-8 pt-6 border-t-2 border-border/80 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-primary flex items-center gap-1.5">
+                <span>⚡</span> AI Triage Intelligence (LangGraph Policy)
+              </h3>
+              <span className="text-[10px] font-mono text-muted-foreground">Thread: {threadId}</span>
+            </div>
+
             <ProcessingResult state={state} />
-            
+
             {state.final_status === "pending_approval" && threadId && (
               <HumanApproval 
                 state={state}
@@ -87,26 +163,20 @@ export default function EmailDetail({
             )}
             
             {state.final_status === "executed" && (
-              <div className="mt-6 p-4 bg-green-500/10 border border-green-500/30 rounded-lg text-green-500 font-medium flex items-center gap-2 animate-fadeIn">
-                <span>✅</span> Action successfully executed.
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded text-emerald-500 font-semibold text-xs flex items-center gap-2">
+                <span>✅</span> Action executed by deterministic policy engine.
               </div>
             )}
             
             {state.final_status === "rejected" && (
-              <div className="mt-6 p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive font-medium flex items-center gap-2 animate-fadeIn">
-                <span>❌</span> Action was rejected and workflow terminated.
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded text-rose-500 font-semibold text-xs flex items-center gap-2">
+                <span>❌</span> Action rejected by support agent. Workflow terminated.
               </div>
             )}
-            
+
             {state.final_status === "error" && (
-              <div className="mt-6 p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive font-medium flex items-center gap-2 animate-fadeIn">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded text-rose-500 font-semibold text-xs flex items-center gap-2">
                 <span>⚠️</span> Processing failed after retries. Routed to manual review.
-              </div>
-            )}
-            
-            {state.final_status === "manual_review" && (
-              <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-500 font-medium flex items-center gap-2 animate-fadeIn">
-                <span>⚠️</span> Max corrections reached. Routed to manual review.
               </div>
             )}
           </div>
