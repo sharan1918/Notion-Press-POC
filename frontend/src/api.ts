@@ -37,12 +37,13 @@ export async function correctClassification(
 
 export async function provideInfo(
   threadId: string,
-  additionalInfo: string
+  additionalInfo: string,
+  attachments: string[] = []
 ): Promise<ProcessingResponse> {
   const res = await fetch(`${BASE}/provide-info/${threadId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ additional_info: additionalInfo }),
+    body: JSON.stringify({ additional_info: additionalInfo, attachments }),
   });
   return res.json();
 }

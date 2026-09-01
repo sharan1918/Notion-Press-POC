@@ -73,7 +73,7 @@ export default function App() {
           onApprove={(threadId) => handleUpdate(selectedEmailId!, approveAction(threadId))}
           onReject={(threadId) => handleUpdate(selectedEmailId!, rejectAction(threadId))}
           onCorrect={(threadId, intent, notes) => handleUpdate(selectedEmailId!, correctClassification(threadId, intent, notes))}
-          onProvideInfo={(threadId, info) => handleUpdate(selectedEmailId!, provideInfo(threadId, info))}
+          onProvideInfo={(threadId, info, attachments) => handleUpdate(selectedEmailId!, provideInfo(threadId, info, attachments))}
         />
       )}
       

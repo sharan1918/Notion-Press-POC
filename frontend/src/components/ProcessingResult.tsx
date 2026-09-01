@@ -48,6 +48,21 @@ export default function ProcessingResult({ state }: { state: ProcessingResponse[
         <p className="text-sm">{classification.classification_explanation}</p>
       </div>
 
+      {/* Uploaded Attachments */}
+      {state.attachments && state.attachments.length > 0 && (
+        <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+          <p className="text-xs text-blue-400 uppercase tracking-wider mb-2 font-mono">Uploaded Proof Attachments</p>
+          <div className="flex flex-wrap gap-2">
+            {state.attachments.map((file, i) => (
+              <span key={i} className="text-xs bg-secondary border border-border rounded px-3 py-1.5 flex items-center gap-2 font-mono text-blue-400">
+                <span>{file.endsWith('.mp4') ? '🎥' : '📷'}</span>
+                {file}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Details & Missing Info */}
       <div className="grid grid-cols-2 gap-4">
         <div className="p-4 bg-secondary/30 rounded-lg border border-border">

@@ -10,7 +10,7 @@ interface Props {
   onApprove: (threadId: string) => void;
   onReject: (threadId: string) => void;
   onCorrect: (threadId: string, intent: string, notes: string) => void;
-  onProvideInfo: (threadId: string, info: string) => void;
+  onProvideInfo: (threadId: string, info: string, attachments: string[]) => void;
 }
 
 export default function EmailDetail({ 
@@ -82,7 +82,7 @@ export default function EmailDetail({
             {state.final_status === "pending_info" && threadId && state.classification?.missing_information && (
               <MissingInfoForm 
                 missingInfo={state.classification.missing_information}
-                onSubmit={(info) => onProvideInfo(threadId, info)}
+                onSubmit={(info, attachments) => onProvideInfo(threadId, info, attachments)}
               />
             )}
             

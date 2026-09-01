@@ -49,6 +49,7 @@ export interface ProcessingResponse {
   state: {
     email: Email;
     supplementary_info?: string;
+    attachments?: string[];
     corrections?: string;
     classification?: EmailClassification;
     recommended_action?: RecommendedAction;
