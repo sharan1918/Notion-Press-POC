@@ -12,9 +12,11 @@ CONFIDENCE_APPROVAL_THRESHOLD = 0.70
 # Team Routing
 INTENT_TO_TEAM = {
     "royalty_payment": "Finance",
-    "printing_issue": "QA",
+    "publishing_status": "Publishing Operations",
+    "printing_issue": "QA & Printing",
     "cover_design": "Design",
     "distribution": "Distribution",
     "isbn_metadata": "Metadata",
+    "general_inquiry": "Author Support",
     "complaint": "Senior Support",
 }
