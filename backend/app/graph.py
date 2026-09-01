@@ -1,6 +1,9 @@
+import os
 from datetime import datetime
 from pydantic import ValidationError
+from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt, Command
 
@@ -10,7 +13,51 @@ from app.config import MAX_LLM_RETRIES, MAX_CORRECTIONS
 from app.prompts import build_prompt
 from app.feedback_store import feedback_store
 
-llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash")
+load_dotenv(override=True)
+
+def get_llms():
+    gemini_key = os.environ.get("GOOGLE_API_KEY")
+    groq_key = os.environ.get("GROQ_API_KEY")
+    
+    gemini = None
+    if gemini_key and not gemini_key.startswith("your_"):
+        try:
+            gemini = ChatGoogleGenerativeAI(model="gemini-3.5-flash", max_retries=0)
+        except Exception:
+            gemini = None
+
+    groq = None
+    if groq_key and not groq_key.startswith("your_"):
+        try:
+            groq = ChatGroq(model="openai/gpt-oss-120b", max_retries=1)
+        except Exception:
+            groq = None
+            
+    return gemini, groq
+
+def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification, str]:
+    gemini_llm, groq_llm = get_llms()
+    
+    # 1. Attempt Gemini (Primary)
+    if gemini_llm:
+        try:
+            structured_llm = gemini_llm.with_structured_output(EmailClassification)
+            res = structured_llm.invoke(prompt)
+            return res, "Gemini 3.5 Flash"
+        except Exception as e:
+            err_msg = str(e)
+            if groq_llm:
+                log(state, f"Gemini quota/error ({err_msg[:60]}...). Automatically switching to Groq failover...")
+            else:
+                raise e
+                
+    # 2. Attempt Groq (Failover / Direct)
+    if groq_llm:
+        structured_llm = groq_llm.with_structured_output(EmailClassification)
+        res = structured_llm.invoke(prompt)
+        return res, "Groq (GPT-OSS-120B)"
+        
+    raise RuntimeError("No working LLM provider found. Please set GOOGLE_API_KEY or GROQ_API_KEY in backend/.env")
 
 def log(state: dict, message: str):
     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -48,13 +95,11 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
         supplementary_info=state.get("supplementary_info", "")
     )
     
-    structured_llm = llm.with_structured_output(EmailClassification)
-    
     try:
-        classification = structured_llm.invoke(prompt)
+        classification, provider_name = invoke_classification(prompt, state)
         state["classification"] = classification
         state["retry_count"] = 0 # reset on success
-        log(state, f"Classification successful: {classification.intent}")
+        log(state, f"Classification successful via {provider_name}: {classification.intent}")
     except Exception as e:
         retry_count = state.get("retry_count", 0) + 1
         state["retry_count"] = retry_count
