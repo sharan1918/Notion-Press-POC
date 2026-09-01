@@ -26,10 +26,13 @@ Instructions:
 3. Identify missing information:
    - In the FIRST TURN, ask for ALL missing identifiers from the domain rules above at once in a single list.
    - If the identifiers and proof are present (in the email, supplementary info, or attached files), missing_information MUST be strictly empty [].
-4. CRITICAL COMPLETENESS RULE: Never invent secondary requirements (e.g. do not ask for bank statements, tax IDs, or phone numbers). If the author has provided their Order ID, Book Title, and photo proof, the request is complete.
-5. Provide a `classification_explanation`: a short, user-facing explanation based ONLY on evidence from the email. Do NOT include your internal reasoning or chain-of-thought.
-6. If the email is ambiguous, pick the most likely intent but set a lower confidence score (<0.70).
-7. If supplementary information or attachments are provided, incorporate them into your analysis to update missing_information and the final intent.
+4. Supplementary Info Mapping & Bare Text Inference:
+   - If the author provides a standalone phrase or value in the supplementary info (e.g., 'The great kid in US' or 'Whispers of the Monsoon'), intelligently infer it as the missing book title or requested identifier even without explicit prefixes like 'Title:'.
+   - Recognize Order numbers (e.g. '#NP-77124', '12345'), Author IDs (e.g. 'NP-8842'), and ISBNs anywhere in the text.
+5. CRITICAL COMPLETENESS RULE: Never invent secondary requirements (e.g. do not ask for bank statements, tax IDs, or phone numbers). If the author has provided their Order ID, Book Title, and photo proof, the request is complete.
+6. Provide a `classification_explanation`: a short, user-facing explanation based ONLY on evidence from the email. Do NOT include your internal reasoning or chain-of-thought.
+7. If the email is ambiguous, pick the most likely intent but set a lower confidence score (<0.70).
+8. If supplementary information or attachments are provided, incorporate them into your analysis to update missing_information and the final intent.
 """
 
 FEW_SHOT_TEMPLATE = """
