@@ -24,6 +24,7 @@ def ingest_email(state: EmailProcessingState) -> EmailProcessingState:
     state["processing_log"] = state.get("processing_log", [])
     state["final_status"] = "processing"
     state["supplementary_info"] = state.get("supplementary_info", None)
+    state["attachments"] = state.get("attachments", [])
     
     email = state["email"]
     log(state, f"Email received from {email.sender}: {email.subject}")
@@ -113,8 +114,10 @@ def request_info(state: EmailProcessingState) -> EmailProcessingState:
     
     # Resume with Command
     additional_info = response.get("additional_info", "")
+    new_attachments = response.get("attachments", [])
     state["supplementary_info"] = additional_info
-    log(state, "User provided additional info. Re-evaluating.")
+    state["attachments"] = list(set(state.get("attachments", []) + new_attachments))
+    log(state, f"User provided additional info and {len(new_attachments)} attachment(s). Re-evaluating.")
     state["final_status"] = "processing"
     return state
 

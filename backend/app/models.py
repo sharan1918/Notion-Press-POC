@@ -53,6 +53,7 @@ class EmailProcessingState(TypedDict):
     # Input
     email: Email
     supplementary_info: str | None         # Additional info provided by user (missing-info flow)
+    attachments: list[str]                 # Attachment file URLs/names uploaded by user
 
     # Feedback context
     corrections: str                       # Formatted few-shot text from relevant past corrections

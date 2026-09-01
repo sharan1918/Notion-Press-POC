@@ -7,7 +7,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 from app.sample_emails import SAMPLE_EMAILS, get_sample_email
 from app.graph import create_graph
@@ -44,6 +44,7 @@ class CorrectionRequest(BaseModel):
 
 class InfoRequest(BaseModel):
     additional_info: str
+    attachments: list[str] = []
 
 @app.get("/api/emails")
 def get_emails():
@@ -97,7 +98,7 @@ def correct_classification(thread_id: str, req: CorrectionRequest):
 @app.post("/api/provide-info/{thread_id}")
 def provide_info(thread_id: str, req: InfoRequest):
     config = {"configurable": {"thread_id": thread_id}}
-    command = Command(resume={"additional_info": req.additional_info})
+    command = Command(resume={"additional_info": req.additional_info, "attachments": req.attachments})
     try:
         result = graph.invoke(command, config)
         return {"thread_id": thread_id, "state": result}
