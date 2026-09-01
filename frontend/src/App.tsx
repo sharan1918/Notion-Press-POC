@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Header from "./components/Header";
 import EmailList from "./components/EmailList";
 import EmailDetail from "./components/EmailDetail";
 import PipelineView from "./components/PipelineView";
@@ -57,28 +58,32 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden text-foreground">
-      <EmailList 
-        emails={emails} 
-        selectedEmailId={selectedEmailId} 
-        onSelect={setSelectedEmailId} 
-        processingState={processingState}
-      />
+    <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden transition-colors duration-300">
+      <Header />
       
-      {selectedEmail && (
-        <EmailDetail 
-          email={selectedEmail}
-          processingState={currentState}
-          onProcess={handleProcess}
-          onApprove={(threadId) => handleUpdate(selectedEmailId!, approveAction(threadId))}
-          onReject={(threadId) => handleUpdate(selectedEmailId!, rejectAction(threadId))}
-          onCorrect={(threadId, intent, notes) => handleUpdate(selectedEmailId!, correctClassification(threadId, intent, notes))}
-          onProvideInfo={(threadId, info, attachments) => handleUpdate(selectedEmailId!, provideInfo(threadId, info, attachments))}
+      <div className="flex flex-1 overflow-hidden">
+        <EmailList 
+          emails={emails} 
+          selectedEmailId={selectedEmailId} 
+          onSelect={setSelectedEmailId} 
+          processingState={processingState}
         />
-      )}
-      
-      <div className="w-96 border-l border-border bg-background p-6 overflow-y-auto">
-        <PipelineView state={currentState?.state || null} />
+        
+        {selectedEmail && (
+          <EmailDetail 
+            email={selectedEmail}
+            processingState={currentState}
+            onProcess={handleProcess}
+            onApprove={(threadId) => handleUpdate(selectedEmailId!, approveAction(threadId))}
+            onReject={(threadId) => handleUpdate(selectedEmailId!, rejectAction(threadId))}
+            onCorrect={(threadId, intent, notes) => handleUpdate(selectedEmailId!, correctClassification(threadId, intent, notes))}
+            onProvideInfo={(threadId, info, attachments) => handleUpdate(selectedEmailId!, provideInfo(threadId, info, attachments))}
+          />
+        )}
+        
+        <div className="w-96 border-l border-border bg-card p-6 overflow-y-auto">
+          <PipelineView state={currentState?.state || null} />
+        </div>
       </div>
     </div>
   );

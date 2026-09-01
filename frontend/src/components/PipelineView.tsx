@@ -3,8 +3,12 @@ import type { ProcessingResponse } from "../types";
 export default function PipelineView({ state }: { state: ProcessingResponse["state"] | null }) {
   if (!state) {
     return (
-      <div className="h-full flex items-center justify-center text-muted-foreground text-sm p-6 text-center">
-        Select an email and process it to see the workflow pipeline.
+      <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-xs p-6 text-center space-y-3 font-mono">
+        <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-xl text-primary">
+          ⚙️
+        </div>
+        <p className="font-sans text-sm text-foreground font-semibold">No Active Workflow</p>
+        <p className="max-w-xs text-muted-foreground">Select an author email and click <span className="text-primary font-semibold">Process with AI</span> to run the LangGraph pipeline.</p>
       </div>
     );
   }
@@ -23,7 +27,7 @@ export default function PipelineView({ state }: { state: ProcessingResponse["sta
       name: "Policy Check", 
       active: !!state.guardrail_result, 
       done: !!state.guardrail_result,
-      label: state.missing_info_block ? "Missing Info" : state.approval_required ? "Approval Req." : "Safe"
+      label: state.missing_info_block ? "Missing Info Block" : state.approval_required ? "Approval Required" : "Safe Auto Execution"
     },
     {
       name: "Human Approval",
@@ -46,50 +50,60 @@ export default function PipelineView({ state }: { state: ProcessingResponse["sta
   ];
 
   return (
-    <div className="p-6 bg-card rounded-lg border border-border">
-      <h3 className="font-semibold mb-6 flex items-center gap-2">
-        <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-        LangGraph Pipeline
-      </h3>
+    <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-6">
+      <div className="flex items-center justify-between border-b border-border pb-4">
+        <h3 className="font-bold text-sm text-foreground flex items-center gap-2 tracking-tight">
+          <span className="text-primary text-base">⚡</span> LangGraph State Machine
+        </h3>
+        <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+          Stateful DAG
+        </span>
+      </div>
       
+      {/* Pipeline Steps List */}
       <div className="space-y-0 relative">
-        <div className="absolute left-4 top-4 bottom-4 w-px bg-border z-0"></div>
+        <div className="absolute left-3.5 top-3.5 bottom-3.5 w-0.5 bg-border z-0"></div>
         
         {steps.map((step, idx) => {
           if (!step.active && !step.pending) return null;
           
           let icon = "○";
           let iconColor = "text-muted-foreground";
-          let bgColor = "bg-card";
+          let circleBg = "bg-card border-border";
           
           if (step.done) {
             icon = "✓";
-            iconColor = "text-green-500";
+            iconColor = "text-emerald-500 font-bold";
+            circleBg = "bg-emerald-500/10 border-emerald-500/30";
           } else if (step.error || step.rejected) {
-            icon = "❌";
-            iconColor = "text-destructive";
+            icon = "✕";
+            iconColor = "text-rose-500 font-bold";
+            circleBg = "bg-rose-500/10 border-rose-500/30";
           } else if (step.pending) {
             icon = "⏸";
             iconColor = "text-amber-500";
-            bgColor = "animate-pulse-amber rounded-full";
+            circleBg = "bg-amber-500/10 border-amber-500/30 animate-pulse-amber";
           } else if (step.active) {
             icon = "○";
             iconColor = "text-primary";
+            circleBg = "bg-primary/10 border-primary/30";
           }
           
           return (
-            <div key={idx} className="flex gap-4 relative z-10 pb-6 last:pb-0">
-              <div className={`w-8 h-8 rounded-full border border-border flex items-center justify-center shrink-0 ${bgColor}`}>
-                <span className={`text-sm ${iconColor}`}>{icon}</span>
+            <div key={idx} className="flex gap-3.5 relative z-10 pb-5 last:pb-0">
+              <div className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 text-xs ${circleBg}`}>
+                <span className={iconColor}>{icon}</span>
               </div>
-              <div className="pt-1">
-                <p className={`text-sm font-medium ${step.done ? 'text-foreground' : 'text-muted-foreground'}`}>
+              <div className="pt-0.5 min-w-0">
+                <p className={`text-xs font-semibold tracking-tight ${step.done ? 'text-foreground' : 'text-muted-foreground'}`}>
                   {step.name}
                 </p>
                 {step.label && (
-                  <span className="text-[10px] uppercase tracking-wider text-primary font-mono mt-1 block">
+                  <span className={`text-[10px] uppercase font-mono font-bold mt-1 inline-block px-1.5 py-0.5 rounded border ${
+                    state?.missing_info_block ? 'bg-amber-500/10 text-amber-500 border-amber-500/30' :
+                    state?.approval_required ? 'bg-amber-500/10 text-amber-500 border-amber-500/30' :
+                    'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                  }`}>
                     {step.label}
                   </span>
                 )}
@@ -99,12 +113,18 @@ export default function PipelineView({ state }: { state: ProcessingResponse["sta
         })}
       </div>
       
+      {/* Real-time State Log */}
       {state.processing_log && (
-        <div className="mt-8 pt-6 border-t border-border">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Processing Log</h4>
-          <div className="bg-secondary/50 rounded p-3 h-32 overflow-y-auto font-mono text-[10px] text-muted-foreground space-y-1">
+        <div className="pt-4 border-t border-border">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground">Execution Log</h4>
+            <span className="text-[10px] font-mono text-muted-foreground">{state.processing_log.length} events</span>
+          </div>
+          <div className="bg-background border border-border/80 rounded-lg p-3 h-36 overflow-y-auto font-mono text-[11px] text-muted-foreground space-y-1.5 leading-relaxed">
             {state.processing_log.map((log, i) => (
-              <div key={i}>{log}</div>
+              <div key={i} className="text-foreground/80 hover:text-primary transition-colors">
+                {log}
+              </div>
             ))}
           </div>
         </div>
