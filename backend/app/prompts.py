@@ -22,12 +22,14 @@ Internal support agents only need basic identifiers to look up records in intern
 
 Instructions:
 1. Extract the urgency of the email on a scale of 1 to 5 (1=low, 5=critical).
-2. Extract key details (important facts explicitly stated in the email or supplementary info).
-3. Identify missing information: ONLY list standard missing identifiers from the domain rules above that are NOT yet provided.
-4. CRITICAL COMPLETENESS RULE: If the standard identifiers are present (in the email or supplementary info), missing_information MUST be empty []. Never invent secondary requirements (e.g. do not ask for bank statements, tax IDs, or phone numbers).
+2. Extract key details (important facts explicitly stated in the email, supplementary info, or attachments).
+3. Identify missing information:
+   - In the FIRST TURN, ask for ALL missing identifiers from the domain rules above at once in a single list.
+   - If the identifiers and proof are present (in the email, supplementary info, or attached files), missing_information MUST be strictly empty [].
+4. CRITICAL COMPLETENESS RULE: Never invent secondary requirements (e.g. do not ask for bank statements, tax IDs, or phone numbers). If the author has provided their Order ID, Book Title, and photo proof, the request is complete.
 5. Provide a `classification_explanation`: a short, user-facing explanation based ONLY on evidence from the email. Do NOT include your internal reasoning or chain-of-thought.
 6. If the email is ambiguous, pick the most likely intent but set a lower confidence score (<0.70).
-7. If supplementary information is provided in the context, incorporate it into your analysis to update missing_information and the final intent if applicable.
+7. If supplementary information or attachments are provided, incorporate them into your analysis to update missing_information and the final intent.
 """
 
 FEW_SHOT_TEMPLATE = """
@@ -35,7 +37,7 @@ FEW_SHOT_TEMPLATE = """
 {corrections_text}
 """
 
-def build_prompt(email_subject: str, email_body: str, corrections_text: str = "", supplementary_info: str = "") -> str:
+def build_prompt(email_subject: str, email_body: str, corrections_text: str = "", supplementary_info: str = "", attachments: list[str] = None) -> str:
     prompt = SYSTEM_PROMPT + "\n"
     if corrections_text:
         prompt += FEW_SHOT_TEMPLATE.format(corrections_text=corrections_text) + "\n"
@@ -44,5 +46,8 @@ def build_prompt(email_subject: str, email_body: str, corrections_text: str = ""
     
     if supplementary_info:
         prompt += f"\n--- SUPPLEMENTARY INFORMATION PROVIDED BY AUTHOR ---\n{supplementary_info}\n--- END SUPPLEMENTARY INFORMATION ---\n"
+        
+    if attachments:
+        prompt += f"\n--- ATTACHED PROOF FILES FROM AUTHOR ---\nAttached files: {', '.join(attachments)}\n--- END ATTACHED PROOF FILES ---\n"
         
     return prompt

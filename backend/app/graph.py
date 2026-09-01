@@ -92,7 +92,8 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
         email_subject=email.subject, 
         email_body=email.body, 
         corrections_text=corrections_text,
-        supplementary_info=state.get("supplementary_info", "")
+        supplementary_info=state.get("supplementary_info", ""),
+        attachments=state.get("attachments", [])
     )
     
     try:
@@ -160,8 +161,15 @@ def request_info(state: EmailProcessingState) -> EmailProcessingState:
     # Resume with Command
     additional_info = response.get("additional_info", "")
     new_attachments = response.get("attachments", [])
-    state["supplementary_info"] = additional_info
-    state["attachments"] = list(set(state.get("attachments", []) + new_attachments))
+    
+    existing_info = state.get("supplementary_info") or ""
+    if existing_info and additional_info:
+        state["supplementary_info"] = f"{existing_info}\n{additional_info}".strip()
+    elif additional_info:
+        state["supplementary_info"] = additional_info.strip()
+        
+    current_attachments = state.get("attachments", []) or []
+    state["attachments"] = list(set(current_attachments + new_attachments))
     log(state, f"User provided additional info and {len(new_attachments)} attachment(s). Re-evaluating.")
     state["final_status"] = "processing"
     return state
