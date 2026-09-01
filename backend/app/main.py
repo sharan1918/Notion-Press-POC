@@ -24,10 +24,18 @@ graph = None
 def serialize_state(state: dict) -> dict:
     res = {}
     for k, v in state.items():
+        if k.startswith("__"):
+            continue
         if hasattr(v, "model_dump"):
             res[k] = v.model_dump()
-        elif isinstance(v, list):
-            res[k] = [item.model_dump() if hasattr(item, "model_dump") else item for item in v]
+        elif isinstance(v, (list, tuple)):
+            res[k] = [
+                item.model_dump() if hasattr(item, "model_dump")
+                else serialize_state(item) if isinstance(item, dict)
+                else item
+                for item in v
+                if not hasattr(item, "value") and "Interrupt" not in str(type(item))
+            ]
         elif isinstance(v, dict):
             res[k] = serialize_state(v)
         else:
