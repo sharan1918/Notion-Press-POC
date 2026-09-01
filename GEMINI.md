@@ -19,3 +19,7 @@ All Git commits must strictly follow the **Conventional Commits** standard. Avoi
 - `fix(backend): update sqlite checkpointer lifespan context manager`
 - `docs(readme): add uv setup and execution guide`
 - `chore(deps): pin requirements with uv pip compile`
+
+## Git Workflow & Permissions
+- **NEVER execute `git commit` or `git push` without explicit user permission.**
+- Always present the proposed code changes and suggested Conventional Commit message, and wait for explicit user approval before staging, committing, or pushing to remote repositories.
