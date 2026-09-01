@@ -10,7 +10,7 @@ from app.config import MAX_LLM_RETRIES, MAX_CORRECTIONS
 from app.prompts import build_prompt
 from app.feedback_store import feedback_store
 
-llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash")
 
 def log(state: dict, message: str):
     timestamp = datetime.now().strftime("%H:%M:%S")
