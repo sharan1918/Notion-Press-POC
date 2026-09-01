@@ -82,6 +82,13 @@ def determine_action_node(state: EmailProcessingState) -> EmailProcessingState:
     state["approval_required"] = guardrail.approval_required
     state["missing_info_block"] = guardrail.missing_info_block
     
+    if guardrail.missing_info_block:
+        state["final_status"] = "pending_info"
+    elif guardrail.approval_required:
+        state["final_status"] = "pending_approval"
+    else:
+        state["final_status"] = "processing"
+    
     log(state, f"Determined action: {action.action_type}. Guardrail eval: safe={not guardrail.approval_required and not guardrail.missing_info_block}")
     return state
 
