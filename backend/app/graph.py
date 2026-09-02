@@ -109,8 +109,11 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
     # If we are re-classifying after correction, use previous classification intent to fetch relevant corrections
     prev_classification = state.get("classification")
     predicted_intent = prev_classification.intent if prev_classification else None
-    
-    corrections = feedback_store.get_relevant_corrections(predicted_intent=predicted_intent)
+    email_query = f"Subject: {email.subject}\nBody: {email.body}"
+    corrections = feedback_store.get_relevant_corrections(
+        query_text=email_query,
+        predicted_intent=predicted_intent
+    )
     corrections_text = feedback_store.format_for_prompt(corrections)
     state["corrections"] = corrections_text
     

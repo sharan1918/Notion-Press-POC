@@ -1,67 +1,191 @@
 import json
 import os
 import threading
+import logging
+from typing import Optional
+import chromadb
+from chromadb.config import Settings
 from app.models import HumanCorrection
 
-class FeedbackStore:
-    def __init__(self, filepath="data/corrections.json"):
-        self.filepath = filepath
-        self.lock = threading.Lock()
-        self._corrections: list[HumanCorrection] = []
-        self._load()
+logger = logging.getLogger(__name__)
 
-    def _load(self):
-        if os.path.exists(self.filepath):
-            try:
-                with open(self.filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self._corrections = [HumanCorrection(**item) for item in data]
-            except Exception as e:
-                print(f"Error loading corrections: {e}")
-                self._corrections = []
+# Default similarity threshold: 0.45 cosine similarity (distance <= 0.55)
+DEFAULT_SIMILARITY_THRESHOLD = float(os.environ.get("CORRECTION_SIMILARITY_THRESHOLD", "0.45"))
+DEFAULT_PERSIST_DIR = os.environ.get("CHROMA_PERSIST_DIR", "data/chroma_db")
+DEFAULT_JSON_PATH = os.environ.get("CORRECTIONS_JSON_PATH", "data/corrections.json")
+
+class FeedbackStore:
+    """
+    Persistent ChromaDB vector store for RAG retrieval of human corrections.
+    Features:
+    - Explicit cosine distance metric ('hnsw:space': 'cosine')
+    - Configurable similarity threshold filtering (cosine similarity = 1.0 - distance)
+    - Concurrency-safe access via RLock
+    - Dual persistence (ChromaDB vectors + human-readable JSON backup)
+    - Cloud deployment compatibility (HttpClient fallback if CHROMA_HOST is set)
+    """
+
+    def __init__(
+        self,
+        persist_directory: str = DEFAULT_PERSIST_DIR,
+        json_path: str = DEFAULT_JSON_PATH,
+        collection_name: str = "human_corrections",
+        similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD
+    ):
+        self.persist_directory = persist_directory
+        self.json_path = json_path
+        self.collection_name = collection_name
+        self.similarity_threshold = similarity_threshold
+        self.lock = threading.RLock()
+        self._corrections_cache: list[HumanCorrection] = []
+
+        with self.lock:
+            self._init_chroma_client()
+            self._hydrate_from_json()
+
+    def _init_chroma_client(self):
+        """Initialize local persistent ChromaDB or remote managed Cloud HTTP client."""
+        chroma_host = os.environ.get("CHROMA_HOST")
+        chroma_port = int(os.environ.get("CHROMA_PORT", "8000"))
+        chroma_ssl = os.environ.get("CHROMA_SSL", "false").lower() == "true"
+
+        if chroma_host:
+            logger.info(f"Connecting to remote ChromaDB at {chroma_host}:{chroma_port} (ssl={chroma_ssl})")
+            self.client = chromadb.HttpClient(
+                host=chroma_host,
+                port=chroma_port,
+                ssl=chroma_ssl,
+                settings=Settings(anonymized_telemetry=False)
+            )
         else:
-            self._corrections = []
+            os.makedirs(self.persist_directory, exist_ok=True)
+            self.client = chromadb.PersistentClient(
+                path=self.persist_directory,
+                settings=Settings(anonymized_telemetry=False)
+            )
+
+        # Explicit Cosine Metric
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    def _hydrate_from_json(self):
+        """Sync from JSON backup if collection is empty, or load JSON into memory."""
+        if os.path.exists(self.json_path):
+            try:
+                with open(self.json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self._corrections_cache = [HumanCorrection(**item) for item in data]
+            except Exception as e:
+                logger.warning(f"Failed to read corrections JSON backup: {e}")
+                self._corrections_cache = []
+        else:
+            self._corrections_cache = []
+
+        # If ChromaDB collection count is 0 but we have JSON items, index them
+        try:
+            if self.collection.count() == 0 and self._corrections_cache:
+                for c in self._corrections_cache:
+                    self._index_correction_in_chroma(c)
+        except Exception as e:
+            logger.warning(f"Failed to check/backfill ChromaDB count: {e}")
+
+    def _index_correction_in_chroma(self, correction: HumanCorrection) -> None:
+        """Internal helper to insert/upsert correction vector into ChromaDB."""
+        doc_id = f"corr_{correction.timestamp}_{abs(hash(correction.email_subject + correction.timestamp))}"
+        doc_text = f"Subject: {correction.email_subject}\nBody: {correction.email_body}"
+        
+        metadata = {
+            "email_subject": correction.email_subject,
+            "email_body": correction.email_body,
+            "original_intent": correction.original_intent,
+            "corrected_intent": correction.corrected_intent,
+            "notes": correction.notes,
+            "timestamp": correction.timestamp
+        }
+
+        self.collection.upsert(
+            documents=[doc_text],
+            metadatas=[metadata],
+            ids=[doc_id]
+        )
 
     def save_correction(self, correction: HumanCorrection) -> None:
-        """Append and persist to JSON file. Thread-safe."""
+        """Concurrency-safe save to both ChromaDB vector store and JSON backup."""
         with self.lock:
-            self._corrections.append(correction)
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(self.filepath), exist_ok=True)
-            with open(self.filepath, 'w', encoding='utf-8') as f:
-                json.dump([c.model_dump() for c in self._corrections], f, indent=2)
+            # 1. Index in ChromaDB
+            self._index_correction_in_chroma(correction)
+
+            # 2. Update memory cache and JSON
+            self._corrections_cache.append(correction)
+            os.makedirs(os.path.dirname(self.json_path) or ".", exist_ok=True)
+            with open(self.json_path, "w", encoding="utf-8") as f:
+                json.dump([c.model_dump() for c in self._corrections_cache], f, indent=2)
 
     def get_all_corrections(self) -> list[HumanCorrection]:
-        return list(self._corrections)
+        """Return all stored corrections."""
+        with self.lock:
+            return list(self._corrections_cache)
 
     def get_relevant_corrections(
         self,
-        predicted_intent: str | None = None,
-        max_recent: int = 5,
-        max_category: int = 3
+        query_text: Optional[str] = None,
+        predicted_intent: Optional[str] = None,
+        n_results: int = 3,
+        similarity_threshold: Optional[float] = None
     ) -> list[HumanCorrection]:
-        """Smart retrieval: return recent corrections + corrections relevant to predicted category."""
-        recent = self._corrections[-max_recent:]
-        
-        category_relevant = []
-        if predicted_intent:
-            category_relevant = [
-                c for c in self._corrections
-                if c.corrected_intent == predicted_intent or c.original_intent == predicted_intent
-            ][:max_category]
-        
-        # Deduplicate
-        seen_ids = set()
-        result = []
-        for c in recent + category_relevant:
-            key = f"{c.email_subject}-{c.timestamp}" # simple unique key
-            if key not in seen_ids:
-                seen_ids.add(key)
-                result.append(c)
-        return result
+        """
+        RAG Semantic Retrieval:
+        1. If query_text is provided, perform vector similarity search in ChromaDB.
+        2. Calculate cosine similarity = 1.0 - distance.
+        3. Filter results by similarity_threshold (rejecting irrelevant queries).
+        4. Fall back to category-relevant corrections if semantic search produces no match above threshold.
+        """
+        threshold = similarity_threshold if similarity_threshold is not None else self.similarity_threshold
+
+        with self.lock:
+            results: list[HumanCorrection] = []
+            seen_keys = set()
+
+            if query_text and self.collection.count() > 0:
+                try:
+                    query_res = self.collection.query(
+                        query_texts=[query_text],
+                        n_results=min(n_results, self.collection.count())
+                    )
+
+                    metadatas = query_res.get("metadatas", [[]])[0]
+                    distances = query_res.get("distances", [[]])[0]
+
+                    for meta, dist in zip(metadatas, distances):
+                        # With cosine space: distance = 1 - cosine_similarity
+                        similarity = 1.0 - dist
+                        if similarity >= threshold:
+                            c = HumanCorrection(**meta)
+                            key = f"{c.email_subject}_{c.timestamp}"
+                            if key not in seen_keys:
+                                seen_keys.add(key)
+                                results.append(c)
+                except Exception as e:
+                    logger.error(f"Error querying ChromaDB: {e}")
+
+            # If semantic search produced results, return them
+            if results:
+                return results
+
+            # Fallback to category / recent if no query_text provided or semantic match is empty
+            if not query_text and predicted_intent:
+                category_matches = [
+                    c for c in self._corrections_cache
+                    if c.corrected_intent == predicted_intent or c.original_intent == predicted_intent
+                ][:n_results]
+                return category_matches
+
+            return results
 
     def format_for_prompt(self, corrections: list[HumanCorrection]) -> str:
-        """Format corrections as few-shot text for prompt injection."""
+        """Format retrieved corrections as few-shot guidance for prompt injection."""
         if not corrections:
             return ""
         
@@ -69,8 +193,26 @@ class FeedbackStore:
         for c in corrections:
             text += f'- An email about "{c.email_subject}" was initially classified as "{c.original_intent}"\n'
             text += f'  but a human corrected it to "{c.corrected_intent}".\n'
-            text += f'  Reason: "{c.notes}"\n\n'
+            text += f'  Reason / Correction Notes: "{c.notes}"\n\n'
         return text
 
-# Global instance
-feedback_store = FeedbackStore("data/corrections.json")
+    def clear(self) -> None:
+        """Clear all stored vectors and cache (for testing/reset)."""
+        with self.lock:
+            try:
+                self.client.delete_collection(self.collection_name)
+            except Exception:
+                pass
+            self.collection = self.client.get_or_create_collection(
+                name=self.collection_name,
+                metadata={"hnsw:space": "cosine"}
+            )
+            self._corrections_cache = []
+            if os.path.exists(self.json_path):
+                try:
+                    os.remove(self.json_path)
+                except Exception:
+                    pass
+
+# Global singleton
+feedback_store = FeedbackStore()
