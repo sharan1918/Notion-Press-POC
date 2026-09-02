@@ -3,9 +3,18 @@ import json
 import uuid
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+import sys
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s:     %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("uvicorn")
 from pydantic import BaseModel
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
@@ -74,6 +83,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"--> [{request.method}] {request.url.path}", flush=True)
+    response = await call_next(request)
+    print(f"<-- [{request.method}] {request.url.path} => {response.status_code}", flush=True)
+    return response
+
 
 class CorrectionRequest(BaseModel):
     corrected_intent: str
@@ -87,6 +103,8 @@ class InfoRequest(BaseModel):
 def get_emails():
     return SAMPLE_EMAILS
 
+import threading
+
 @app.get("/api/process-stream/{email_id}")
 async def process_email_stream(email_id: str):
     try:
@@ -99,29 +117,45 @@ async def process_email_stream(email_id: str):
     initial_state = {"email": email}
 
     async def event_generator():
+        queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
-        start_time = loop.time()
-        deadline = start_time + 60.0  # 60s safety timeout for streaming
-        try:
-            for val in graph.stream(initial_state, config, stream_mode="values"):
-                if loop.time() > deadline:
-                    raise TimeoutError("Graph execution exceeded maximum streaming timeout (60s)")
-                serialized = serialize_state(val)
-                payload = json.dumps({"thread_id": thread_id, "state": serialized})
-                yield f"data: {payload}\n\n"
-                await asyncio.sleep(0)
-            yield "data: [DONE]\n\n"
-        except Exception as e:
-            err_payload = json.dumps({
-                "thread_id": thread_id,
-                "state": {
-                    "email": email.model_dump(),
-                    "final_status": "error",
-                    "processing_log": [f"Pipeline error: {str(e)}"]
-                }
-            })
-            yield f"data: {err_payload}\n\n"
-            yield "data: [DONE]\n\n"
+
+        def stream_worker():
+            try:
+                for val in graph.stream(initial_state, config, stream_mode="values"):
+                    serialized = serialize_state(val)
+                    asyncio.run_coroutine_threadsafe(queue.put(("data", serialized)), loop).result()
+                asyncio.run_coroutine_threadsafe(queue.put(("done", None)), loop).result()
+            except Exception as e:
+                asyncio.run_coroutine_threadsafe(queue.put(("error", str(e))), loop).result()
+
+        worker_thread = threading.Thread(target=stream_worker, daemon=True)
+        worker_thread.start()
+
+        print(f"--> [STREAM START] {email.sender}: {email.subject} ({thread_id})", flush=True)
+
+        while True:
+            msg_type, payload = await queue.get()
+            if msg_type == "data":
+                print(f"[STREAM NODE] status: {payload.get('final_status')}", flush=True)
+                yield f"data: {json.dumps({'thread_id': thread_id, 'state': payload})}\n\n"
+            elif msg_type == "done":
+                yield "data: [DONE]\n\n"
+                print(f"<-- [STREAM COMPLETE] {thread_id}", flush=True)
+                break
+            elif msg_type == "error":
+                print(f"[STREAM ERROR] {payload}", flush=True)
+                err_payload = json.dumps({
+                    "thread_id": thread_id,
+                    "state": {
+                        "email": email.model_dump(),
+                        "final_status": "error",
+                        "processing_log": [f"Pipeline error: {payload}"]
+                    }
+                })
+                yield f"data: {err_payload}\n\n"
+                yield "data: [DONE]\n\n"
+                break
 
     return StreamingResponse(
         event_generator(),

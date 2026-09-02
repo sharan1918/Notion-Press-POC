@@ -88,7 +88,8 @@ def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification
 def log(state: dict, message: str):
     timestamp = datetime.now().strftime("%H:%M:%S")
     state.setdefault("processing_log", []).append(f"[{timestamp}] {message}")
-    print(f"[{timestamp}] {message}")
+    print(f"[{timestamp}] {message}", flush=True)
+    logger.info(f"[{timestamp}] {message}")
 
 def ingest_email(state: EmailProcessingState) -> EmailProcessingState:
     # Initialize basic state
