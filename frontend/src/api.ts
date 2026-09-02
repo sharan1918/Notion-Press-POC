@@ -1,6 +1,6 @@
 import type { Email, ProcessingResponse, HumanCorrection } from "./types";
 
-const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+const BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 export async function getEmails(): Promise<Email[]> {
   const res = await fetch(`${BASE}/emails`);
