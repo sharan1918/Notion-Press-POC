@@ -81,3 +81,10 @@ graph TD
 - **Idempotency**: Non-repeatable actions (e.g. `issue_refund`) require an idempotency key in production to prevent duplicate executions from network retries.
 - **Stopping Conditions**: Maximum correction loops (3) and maximum retries (2) prevent infinite loops.
 - **Persistence**: LangGraph state is persisted using a SQLite Checkpointer to survive server restarts during `interrupt()` waits.
+
+## 🚀 CI/CD & Cloud Deployment
+
+- **CI Pipeline**: Automated backend test suite (`pytest`) and frontend verification (`oxlint` + `vite build`) via GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+- **Backend Deployment**: Containerized on **Koyeb** via [`backend/Dockerfile`](backend/Dockerfile) with dynamic port handling and CORS support.
+- **Frontend Deployment**: Hosted on **Vercel** with global edge CDN and automatic PR previews.
+- **Full Guide**: See [Deployment & CI/CD Guide](docs/DEPLOYMENT.md).
