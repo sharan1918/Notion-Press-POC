@@ -18,12 +18,12 @@ COPY requirements.txt .
 # Install Python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend application source code and seed data
+# Copy backend application source code
 COPY app/ ./app/
-COPY data/ ./data/
 
 # Ensure data directory exists and has permissions
 RUN mkdir -p /app/data
+
 
 # Expose port
 EXPOSE 8000
