@@ -21,8 +21,8 @@ export function streamProcessEmail(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     controller.abort();
-    onError?.(new Error("Stream request timed out after 60s"));
-  }, 60000);
+    onError?.(new Error("Stream connection timed out after 70s"));
+  }, 70000);
 
   (async () => {
     try {

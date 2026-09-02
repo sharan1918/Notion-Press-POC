@@ -15,24 +15,46 @@ from app.feedback_store import feedback_store
 
 load_dotenv(override=True)
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+_CACHED_LLMS = None
+_CACHED_KEYS = None
+
+def _is_valid_api_key(key: str | None) -> bool:
+    if not key or not isinstance(key, str):
+        return False
+    key = key.strip()
+    return len(key) >= 15 and not key.startswith("your_") and not key.startswith("dummy_")
+
 def get_llms():
+    global _CACHED_LLMS, _CACHED_KEYS
     gemini_key = os.environ.get("GOOGLE_API_KEY")
     groq_key = os.environ.get("GROQ_API_KEY")
+    current_keys = (gemini_key, groq_key)
+    
+    if _CACHED_LLMS is not None and _CACHED_KEYS == current_keys:
+        return _CACHED_LLMS
     
     gemini = None
-    if gemini_key and not gemini_key.startswith("your_"):
+    if _is_valid_api_key(gemini_key):
         try:
             gemini = ChatGoogleGenerativeAI(model="gemini-3.5-flash", max_retries=1, timeout=30.0)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to initialize ChatGoogleGenerativeAI: {e}")
             gemini = None
 
     groq = None
-    if groq_key and not groq_key.startswith("your_"):
+    if _is_valid_api_key(groq_key):
         try:
             groq = ChatGroq(model="openai/gpt-oss-120b", max_retries=1, timeout=30.0)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to initialize ChatGroq: {e}")
             groq = None
             
+    _CACHED_LLMS = (gemini, groq)
+    _CACHED_KEYS = current_keys
     return gemini, groq
 
 def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification, str]:

@@ -40,15 +40,15 @@ def serialize_state(state: dict) -> dict:
                 else item
                 for item in v
                 if not hasattr(item, "value") and "Interrupt" not in str(type(item))
+                and isinstance(item, (str, int, float, bool, type(None), dict, list, set, tuple)) or hasattr(item, "model_dump")
             ]
         elif isinstance(v, dict):
             res[k] = serialize_state(v)
+        elif isinstance(v, (str, int, float, bool, type(None))):
+            res[k] = v
         else:
-            try:
-                json.dumps(v)
-                res[k] = v
-            except (TypeError, OverflowError):
-                res[k] = str(v)
+            # Safely skip non-serializable objects to prevent leaking internal memory addresses
+            continue
     return res
 
 @asynccontextmanager
@@ -94,11 +94,12 @@ async def process_email_stream(email_id: str):
     initial_state = {"email": email}
 
     async def event_generator():
-        start_time = asyncio.get_event_loop().time()
-        max_duration = 60.0  # 60s safety timeout for streaming
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
+        deadline = start_time + 60.0  # 60s safety timeout for streaming
         try:
             for val in graph.stream(initial_state, config, stream_mode="values"):
-                if asyncio.get_event_loop().time() - start_time > max_duration:
+                if loop.time() > deadline:
                     raise TimeoutError("Graph execution exceeded maximum streaming timeout (60s)")
                 serialized = serialize_state(val)
                 payload = json.dumps({"thread_id": thread_id, "state": serialized})

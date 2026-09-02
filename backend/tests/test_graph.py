@@ -67,9 +67,10 @@ def test_serialize_state():
     assert set(serialized["tags"]) == {"tag1", "tag2"}
     assert isinstance(serialized["nested"]["status_set"], list)
     assert serialized["nested"]["status_set"] == ["done"]
+    assert "custom_obj" not in serialized  # Non-serializable object safely omitted
 
 def test_get_llms_initialization():
-    with patch.dict("os.environ", {"GOOGLE_API_KEY": "dummy_google_key", "GROQ_API_KEY": "dummy_groq_key"}):
+    with patch.dict("os.environ", {"GOOGLE_API_KEY": "AIzaSyValidGoogleKey123456789", "GROQ_API_KEY": "gsk_validGroqKey123456789"}):
         gemini, groq = get_llms()
         # When valid keys are provided, clients are initialized
         assert gemini is not None or groq is not None

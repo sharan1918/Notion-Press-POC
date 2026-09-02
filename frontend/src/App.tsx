@@ -73,7 +73,9 @@ export default function App() {
           next.delete(id);
           return next;
         });
-        delete abortControllersRef.current[id];
+        if (abortControllersRef.current[id] === cancel) {
+          delete abortControllersRef.current[id];
+        }
       },
       (err) => {
         console.error("Stream error for", id, err);
@@ -82,12 +84,14 @@ export default function App() {
           next.delete(id);
           return next;
         });
-        delete abortControllersRef.current[id];
+        if (abortControllersRef.current[id] === cancel) {
+          delete abortControllersRef.current[id];
+        }
       }
     );
 
     abortControllersRef.current[id] = cancel;
-  }, [emails, processingState]);
+  }, [emails]);
 
   // Initial load
   useEffect(() => {

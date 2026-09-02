@@ -62,8 +62,8 @@ This document details the architectural decisions, technology stack rationale, s
 ### C. Multi-Provider Automatic Failover
 * **Problem**: Free-tier cloud LLM endpoints frequently suffer from rate limits (`429 RESOURCE_EXHAUSTED`) or network timeouts.
 * **Decision**: Implemented resilient multi-provider routing in `backend/app/graph.py`:
-  * Attempts primary model (`Gemini 3.5 Flash`) with `max_retries=0` for instant failure detection.
-  * Catches exceptions immediately and switches to `Groq` (`openai/gpt-oss-120b`) in under 2.5 seconds without crashing the user session.
+  * Attempts primary model (`Gemini 3.5 Flash`) with `max_retries=1` and `timeout=30.0` for bounded latency.
+  * Catches quota and timeout exceptions and automatically switches to `Groq` (`openai/gpt-oss-120b`) failover without crashing the pipeline.
   * Both providers adhere to the identical `EmailClassification` Pydantic structured output contract.
 
 ### D. In-Context Feedback Loop (Few-Shot Reinforcement)
