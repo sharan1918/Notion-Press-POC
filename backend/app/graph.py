@@ -1,6 +1,9 @@
+import os
 from datetime import datetime
 from pydantic import ValidationError
+from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt, Command
 
@@ -10,7 +13,77 @@ from app.config import MAX_LLM_RETRIES, MAX_CORRECTIONS
 from app.prompts import build_prompt
 from app.feedback_store import feedback_store
 
-llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash")
+load_dotenv(override=True)
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+_CACHED_LLMS = None
+_CACHED_KEYS = None
+
+def _is_valid_api_key(key: str | None) -> bool:
+    if not key or not isinstance(key, str):
+        return False
+    key = key.strip()
+    return len(key) >= 15 and not key.startswith("your_") and not key.startswith("dummy_")
+
+def get_llms():
+    global _CACHED_LLMS, _CACHED_KEYS
+    gemini_key = os.environ.get("GOOGLE_API_KEY")
+    groq_key = os.environ.get("GROQ_API_KEY")
+    current_keys = (gemini_key, groq_key)
+    
+    if _CACHED_LLMS is not None and _CACHED_KEYS == current_keys:
+        return _CACHED_LLMS
+    
+    gemini = None
+    if _is_valid_api_key(gemini_key):
+        try:
+            gemini = ChatGoogleGenerativeAI(model="gemini-3.5-flash", max_retries=1, timeout=30.0)
+        except Exception as e:
+            logger.warning(f"Failed to initialize ChatGoogleGenerativeAI: {e}")
+            gemini = None
+
+    groq = None
+    if _is_valid_api_key(groq_key):
+        try:
+            groq = ChatGroq(model="openai/gpt-oss-120b", max_retries=1, timeout=30.0)
+        except Exception as e:
+            logger.warning(f"Failed to initialize ChatGroq: {e}")
+            groq = None
+            
+    _CACHED_LLMS = (gemini, groq)
+    _CACHED_KEYS = current_keys
+    return gemini, groq
+
+def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification, str]:
+    gemini_llm, groq_llm = get_llms()
+    
+    # 1. Attempt Gemini (Primary)
+    if gemini_llm:
+        try:
+            structured_llm = gemini_llm.with_structured_output(EmailClassification)
+            res = structured_llm.invoke(prompt)
+            return res, "Gemini 3.5 Flash"
+        except Exception as e:
+            err_msg = str(e)
+            if groq_llm:
+                log(state, f"Gemini quota/error ({err_msg[:60]}...). Automatically switching to Groq failover...")
+            else:
+                raise e
+                
+    # 2. Attempt Groq (Failover / Direct)
+    if groq_llm:
+        try:
+            structured_llm = groq_llm.with_structured_output(EmailClassification)
+            res = structured_llm.invoke(prompt)
+            return res, "Groq (GPT-OSS-120B)"
+        except Exception as e:
+            log(state, f"Groq execution error: {str(e)[:80]}")
+            raise e
+        
+    raise RuntimeError("No working LLM provider found. Please set GOOGLE_API_KEY or GROQ_API_KEY in backend/.env")
 
 def log(state: dict, message: str):
     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -45,23 +118,23 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
         email_subject=email.subject, 
         email_body=email.body, 
         corrections_text=corrections_text,
-        supplementary_info=state.get("supplementary_info", "")
+        supplementary_info=state.get("supplementary_info", ""),
+        attachments=state.get("attachments", [])
     )
     
-    structured_llm = llm.with_structured_output(EmailClassification)
-    
     try:
-        classification = structured_llm.invoke(prompt)
+        classification, provider_name = invoke_classification(prompt, state)
         state["classification"] = classification
         state["retry_count"] = 0 # reset on success
-        log(state, f"Classification successful: {classification.intent}")
+        log(state, f"Classification successful via {provider_name}: {classification.intent}")
     except Exception as e:
         retry_count = state.get("retry_count", 0) + 1
-        state["retry_count"] = retry_count
         if retry_count <= MAX_LLM_RETRIES:
+            state["retry_count"] = retry_count
             log(state, f"LLM failed ({e}), retry {retry_count}/{MAX_LLM_RETRIES}")
         else:
             log(state, f"LLM failed after {MAX_LLM_RETRIES} retries. Routing to manual review.")
+            state["retry_count"] = 0
             state["final_status"] = "error"
     return state
 
@@ -115,8 +188,15 @@ def request_info(state: EmailProcessingState) -> EmailProcessingState:
     # Resume with Command
     additional_info = response.get("additional_info", "")
     new_attachments = response.get("attachments", [])
-    state["supplementary_info"] = additional_info
-    state["attachments"] = list(set(state.get("attachments", []) + new_attachments))
+    
+    existing_info = state.get("supplementary_info") or ""
+    if existing_info and additional_info:
+        state["supplementary_info"] = f"{existing_info}\n{additional_info}".strip()
+    elif additional_info:
+        state["supplementary_info"] = additional_info.strip()
+        
+    current_attachments = state.get("attachments", []) or []
+    state["attachments"] = list(set(current_attachments + new_attachments))
     log(state, f"User provided additional info and {len(new_attachments)} attachment(s). Re-evaluating.")
     state["final_status"] = "processing"
     return state

@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 langchain-google-genai
+langchain-groq
 langgraph
 langgraph-checkpoint-sqlite
 pydantic

@@ -6,6 +6,7 @@ interface Props {
   selectedEmailId: string | null;
   onSelect: (id: string) => void;
   processingState: Record<string, ProcessingResponse>;
+  streamingIds?: Set<string>;
 }
 
 // Outlook-style avatar colors based on initial
@@ -25,7 +26,7 @@ function getAvatarColor(name: string) {
   return avatarColors[hash % avatarColors.length];
 }
 
-export default function EmailList({ emails, selectedEmailId, onSelect, processingState }: Props) {
+export default function EmailList({ emails, selectedEmailId, onSelect, processingState, streamingIds }: Props) {
   const [tab, setTab] = useState<"focused" | "archive">("focused");
   const [search, setSearch] = useState("");
 
@@ -132,6 +133,8 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
           const parts = email.sender_name.trim().split(" ");
           const initials = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : parts[0].slice(0, 2);
 
+          const isItemStreaming = streamingIds?.has(email.id) || status === "processing";
+
           return (
             <div
               key={email.id}
@@ -174,8 +177,15 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
                   {email.body}
                 </p>
 
-                {/* Status indicator pill if processed */}
-                {status && (
+                {/* Status indicator pill if streaming or processed */}
+                {isItemStreaming ? (
+                  <div className="mt-1.5 flex items-center gap-1.5 text-primary">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+                    <span className="text-[10px] font-mono font-medium text-primary">
+                      AI Triaging...
+                    </span>
+                  </div>
+                ) : status ? (
                   <div className="mt-1.5 flex items-center gap-1.5">
                     <span className={`w-1.5 h-1.5 rounded-full ${
                       status === 'executed' ? 'bg-emerald-500' :
@@ -187,7 +197,7 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
                       {status.replace('_', ' ')}
                     </span>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           );

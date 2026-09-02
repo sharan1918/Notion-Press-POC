@@ -12,6 +12,80 @@ export async function processEmail(id: string): Promise<ProcessingResponse> {
   return res.json();
 }
 
+export function streamProcessEmail(
+  id: string,
+  onUpdate: (data: ProcessingResponse) => void,
+  onComplete?: () => void,
+  onError?: (err: any) => void
+): () => void {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+    onError?.(new Error("Stream connection timed out after 70s"));
+  }, 70000);
+
+  (async () => {
+    try {
+      const response = await fetch(`${BASE}/process-stream/${id}`, {
+        signal: controller.signal,
+        headers: { Accept: "text/event-stream" },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error("No response body");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("data: ")) {
+            const dataStr = trimmed.slice(6);
+            if (dataStr === "[DONE]") {
+              clearTimeout(timeoutId);
+              onComplete?.();
+              return;
+            }
+            try {
+              const parsed: ProcessingResponse = JSON.parse(dataStr);
+              onUpdate(parsed);
+            } catch (err) {
+              console.error("Error parsing SSE JSON:", err);
+            }
+          }
+        }
+      }
+      clearTimeout(timeoutId);
+      onComplete?.();
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name !== "AbortError") {
+        console.error("SSE stream error:", err);
+        onError?.(err);
+      }
+    }
+  })();
+
+  return () => {
+    clearTimeout(timeoutId);
+    controller.abort();
+  };
+}
+
 export async function approveAction(threadId: string): Promise<ProcessingResponse> {
   const res = await fetch(`${BASE}/approve/${threadId}`, { method: "POST" });
   return res.json();
