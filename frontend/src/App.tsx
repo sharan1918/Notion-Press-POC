@@ -26,6 +26,12 @@ export default function App() {
       return;
     }
 
+    const emailObj = emails.find(e => e.id === id) || processingState[id]?.state?.email;
+    if (!emailObj) {
+      console.warn(`Cannot start stream: Email with ID ${id} not found.`);
+      return;
+    }
+
     // Cancel existing stream for this id if any
     if (abortControllersRef.current[id]) {
       abortControllersRef.current[id]();
@@ -37,13 +43,12 @@ export default function App() {
 
     // Initialize/reset placeholder state
     setProcessingState(prev => {
-      const emailObj = emails.find(e => e.id === id) || prev[id]?.state?.email;
       return {
         ...prev,
         [id]: {
           thread_id: prev[id]?.thread_id || "",
           state: {
-            email: emailObj!,
+            email: emailObj,
             final_status: "processing",
             processing_log: ["Initiating real-time AI triage pipeline..."]
           }

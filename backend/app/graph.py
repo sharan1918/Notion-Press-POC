@@ -75,9 +75,13 @@ def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification
                 
     # 2. Attempt Groq (Failover / Direct)
     if groq_llm:
-        structured_llm = groq_llm.with_structured_output(EmailClassification)
-        res = structured_llm.invoke(prompt)
-        return res, "Groq (GPT-OSS-120B)"
+        try:
+            structured_llm = groq_llm.with_structured_output(EmailClassification)
+            res = structured_llm.invoke(prompt)
+            return res, "Groq (GPT-OSS-120B)"
+        except Exception as e:
+            log(state, f"Groq execution error: {str(e)[:80]}")
+            raise e
         
     raise RuntimeError("No working LLM provider found. Please set GOOGLE_API_KEY or GROQ_API_KEY in backend/.env")
 
