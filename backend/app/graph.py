@@ -22,14 +22,14 @@ def get_llms():
     gemini = None
     if gemini_key and not gemini_key.startswith("your_"):
         try:
-            gemini = ChatGoogleGenerativeAI(model="gemini-3.5-flash", max_retries=0)
+            gemini = ChatGoogleGenerativeAI(model="gemini-3.5-flash", max_retries=1, timeout=30.0)
         except Exception:
             gemini = None
 
     groq = None
     if groq_key and not groq_key.startswith("your_"):
         try:
-            groq = ChatGroq(model="openai/gpt-oss-120b", max_retries=1)
+            groq = ChatGroq(model="openai/gpt-oss-120b", max_retries=1, timeout=30.0)
         except Exception:
             groq = None
             
@@ -103,11 +103,12 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
         log(state, f"Classification successful via {provider_name}: {classification.intent}")
     except Exception as e:
         retry_count = state.get("retry_count", 0) + 1
-        state["retry_count"] = retry_count
         if retry_count <= MAX_LLM_RETRIES:
+            state["retry_count"] = retry_count
             log(state, f"LLM failed ({e}), retry {retry_count}/{MAX_LLM_RETRIES}")
         else:
             log(state, f"LLM failed after {MAX_LLM_RETRIES} retries. Routing to manual review.")
+            state["retry_count"] = 0
             state["final_status"] = "error"
     return state
 

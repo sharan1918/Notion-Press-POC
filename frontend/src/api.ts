@@ -19,6 +19,10 @@ export function streamProcessEmail(
   onError?: (err: any) => void
 ): () => void {
   const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+    onError?.(new Error("Stream request timed out after 60s"));
+  }, 60000);
 
   (async () => {
     try {
@@ -52,6 +56,7 @@ export function streamProcessEmail(
           if (trimmed.startsWith("data: ")) {
             const dataStr = trimmed.slice(6);
             if (dataStr === "[DONE]") {
+              clearTimeout(timeoutId);
               onComplete?.();
               return;
             }
@@ -64,8 +69,10 @@ export function streamProcessEmail(
           }
         }
       }
+      clearTimeout(timeoutId);
       onComplete?.();
     } catch (err: any) {
+      clearTimeout(timeoutId);
       if (err.name !== "AbortError") {
         console.error("SSE stream error:", err);
         onError?.(err);
@@ -73,7 +80,10 @@ export function streamProcessEmail(
     }
   })();
 
-  return () => controller.abort();
+  return () => {
+    clearTimeout(timeoutId);
+    controller.abort();
+  };
 }
 
 export async function approveAction(threadId: string): Promise<ProcessingResponse> {

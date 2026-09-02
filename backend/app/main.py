@@ -1,5 +1,7 @@
 import os
 import json
+import uuid
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -28,10 +30,13 @@ def serialize_state(state: dict) -> dict:
             continue
         if hasattr(v, "model_dump"):
             res[k] = v.model_dump()
+        elif isinstance(v, set):
+            res[k] = list(v)
         elif isinstance(v, (list, tuple)):
             res[k] = [
                 item.model_dump() if hasattr(item, "model_dump")
                 else serialize_state(item) if isinstance(item, dict)
+                else list(item) if isinstance(item, set)
                 else item
                 for item in v
                 if not hasattr(item, "value") and "Interrupt" not in str(type(item))
@@ -39,7 +44,11 @@ def serialize_state(state: dict) -> dict:
         elif isinstance(v, dict):
             res[k] = serialize_state(v)
         else:
-            res[k] = v
+            try:
+                json.dumps(v)
+                res[k] = v
+            except (TypeError, OverflowError):
+                res[k] = str(v)
     return res
 
 @asynccontextmanager
@@ -80,16 +89,21 @@ async def process_email_stream(email_id: str):
     except ValueError:
         raise HTTPException(status_code=404, detail="Email not found")
 
-    thread_id = f"thread_{email_id}_{os.urandom(4).hex()}"
+    thread_id = f"thread_{email_id}_{uuid.uuid4().hex[:12]}"
     config = {"configurable": {"thread_id": thread_id}}
     initial_state = {"email": email}
 
     async def event_generator():
+        start_time = asyncio.get_event_loop().time()
+        max_duration = 60.0  # 60s safety timeout for streaming
         try:
             for val in graph.stream(initial_state, config, stream_mode="values"):
+                if asyncio.get_event_loop().time() - start_time > max_duration:
+                    raise TimeoutError("Graph execution exceeded maximum streaming timeout (60s)")
                 serialized = serialize_state(val)
                 payload = json.dumps({"thread_id": thread_id, "state": serialized})
                 yield f"data: {payload}\n\n"
+                await asyncio.sleep(0)
             yield "data: [DONE]\n\n"
         except Exception as e:
             err_payload = json.dumps({
@@ -120,7 +134,7 @@ def process_email(email_id: str):
     except ValueError:
         raise HTTPException(status_code=404, detail="Email not found")
         
-    thread_id = f"thread_{email_id}_{os.urandom(4).hex()}"
+    thread_id = f"thread_{email_id}_{uuid.uuid4().hex[:12]}"
     config = {"configurable": {"thread_id": thread_id}}
     
     initial_state = {"email": email}
