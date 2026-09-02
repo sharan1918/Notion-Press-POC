@@ -1,0 +1,60 @@
+name: CD Deployment Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy-koyeb-backend:
+    name: Trigger Koyeb Backend Deployment
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Trigger Koyeb Redeploy (via Webhook)
+        if: env.KOYEB_DEPLOY_WEBHOOK != ''
+        env:
+          KOYEB_DEPLOY_WEBHOOK: ${{ secrets.KOYEB_DEPLOY_WEBHOOK }}
+        run: |
+          echo "Triggering Koyeb redeployment webhook..."
+          curl -X POST "$KOYEB_DEPLOY_WEBHOOK"
+          echo "Koyeb deploy webhook triggered successfully."
+
+      - name: Skip Webhook Notice
+        if: env.KOYEB_DEPLOY_WEBHOOK == ''
+        env:
+          KOYEB_DEPLOY_WEBHOOK: ${{ secrets.KOYEB_DEPLOY_WEBHOOK }}
+        run: |
+          echo "KOYEB_DEPLOY_WEBHOOK secret not set. If you connected Koyeb directly to GitHub, automatic deployment will occur on push."
+
+  deploy-vercel-frontend:
+    name: Trigger Vercel Frontend Deployment
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Vercel (Action)
+        if: env.VERCEL_TOKEN != ''
+        uses: amondnet/vercel-action@v25
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: ./frontend
+          vercel-args: '--prod'
+
+      - name: Skip Vercel Action Notice
+        if: env.VERCEL_TOKEN == ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          echo "VERCEL_TOKEN secret not set. If you connected Vercel directly to GitHub, automatic deployment will occur on push."
