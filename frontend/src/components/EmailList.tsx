@@ -33,9 +33,7 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
   const isArchived = (email: Email) => {
     const state = processingState[email.id]?.state;
     return state?.recommended_action?.action_type === "archive" || 
-           state?.classification?.intent === "spam" ||
-           email.subject.toLowerCase().includes("seo") ||
-           email.sender.toLowerCase().includes("spam");
+           state?.classification?.intent === "spam";
   };
 
   const archivedCount = emails.filter(isArchived).length;
@@ -196,6 +194,17 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
                     <span className="text-[10px] font-mono text-muted-foreground uppercase">
                       {status.replace('_', ' ')}
                     </span>
+                    {/* Intake optimization badge */}
+                    {state?.intake_result === "spam_filtered" && (
+                      <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30">
+                        ⚡ Fast-Path
+                      </span>
+                    )}
+                    {state?.intake_result === "cache_hit" && (
+                      <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                        💾 Cached
+                      </span>
+                    )}
                   </div>
                 ) : null}
               </div>

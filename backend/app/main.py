@@ -3,18 +3,12 @@ import json
 import uuid
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 import logging
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s:     %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
-logger = logging.getLogger("uvicorn")
+from typing import Optional
 from pydantic import BaseModel
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
@@ -234,6 +228,137 @@ def get_status(thread_id: str):
 def get_corrections():
     return [c.model_dump() for c in feedback_store.get_all_corrections()]
 
+class TriageRequest(BaseModel):
+    email_ids: list[str] = []  # Empty = triage all sample emails
+
+# In-memory storage for batch triage jobs
+triage_jobs: dict[str, dict] = {}
+
+async def _process_triage_job(job_id: str, target_ids: list[str]):
+    """Background task to process emails."""
+    from app.config import TRIAGE_DELAY_SECONDS
+    from app.intake_filter import check_spam
+    from app.graph import intent_cache
+    
+    results = {}
+    llm_call_count = 0
+    triage_jobs[job_id]["status"] = "processing"
+
+    for email_id in target_ids:
+        try:
+            email = get_sample_email(email_id)
+        except ValueError:
+            results[email_id] = {"error": "unknown_email_id"}
+            continue
+
+        thread_id = f"thread_{email_id}_{uuid.uuid4().hex[:12]}"
+        config = {"configurable": {"thread_id": thread_id}}
+        initial_state = {"email": email}
+
+        # Predict if LLM will be used by checking fast-paths
+        pre_spam_check = check_spam(email)
+        is_deterministic_spam = pre_spam_check.outcome == "spam_filtered"
+        
+        is_cache_hit = False
+        if not is_deterministic_spam:
+            cache_result = intent_cache.get_cached_classification(email)
+            if cache_result and cache_result.outcome == "cache_hit":
+                is_cache_hit = True
+
+        uses_llm = not (is_deterministic_spam or is_cache_hit)
+
+        # Add delay between actual LLM calls
+        if llm_call_count > 0 and uses_llm:
+            await asyncio.sleep(TRIAGE_DELAY_SECONDS)
+
+        loop = asyncio.get_running_loop()
+        try:
+            # Add timeout to prevent hanging threads (30s)
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: graph.invoke(initial_state, config)),
+                timeout=30.0
+            )
+            serialized = serialize_state(result)
+            results[email_id] = {"thread_id": thread_id, "state": serialized}
+
+            intake = serialized.get("intake_result")
+            logging.info(
+                f"[TRIAGE] {email.sender_name}: {email.subject} → "
+                f"{serialized.get('final_status', '?')} "
+                f"(intake={intake or 'full_pipeline'})"
+            )
+
+            if uses_llm:
+                llm_call_count += 1
+
+        except TimeoutError:
+            logging.error(f"[TRIAGE ERROR] {email_id}: LangGraph invoke timed out after 30s")
+            results[email_id] = {
+                "thread_id": thread_id,
+                "error": "timeout",
+                "state": {
+                    "email": email.model_dump(),
+                    "final_status": "error",
+                    "processing_log": ["Triage error: LangGraph execution timed out"],
+                },
+            }
+            if uses_llm:
+                llm_call_count += 1
+        except Exception as e:
+            logging.error(f"[TRIAGE ERROR] {email_id}: {e}")
+            results[email_id] = {
+                "thread_id": thread_id,
+                "error": str(e),
+                "state": {
+                    "email": email.model_dump(),
+                    "final_status": "error",
+                    "processing_log": [f"Triage error: {str(e)}"],
+                },
+            }
+            if uses_llm:
+                llm_call_count += 1
+
+    triage_jobs[job_id]["status"] = "completed"
+    triage_jobs[job_id]["results"] = results
+
+
+@app.post("/api/triage-all", status_code=202)
+async def triage_all_emails(background_tasks: BackgroundTasks, req: TriageRequest = TriageRequest()):
+    """
+    Batch auto-triage: process multiple emails through the LangGraph pipeline.
+    Runs in the background and returns a job_id for polling.
+    """
+    from app.config import TRIAGE_DELAY_SECONDS
+    from app.intake_filter import check_spam
+
+    MAX_TRIAGE_EMAILS = 50
+    if len(req.email_ids) > MAX_TRIAGE_EMAILS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many email IDs requested. Maximum allowed is {MAX_TRIAGE_EMAILS}."
+        )
+
+    target_ids = req.email_ids if req.email_ids else [e["id"] for e in SAMPLE_EMAILS]
+    
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+    triage_jobs[job_id] = {
+        "status": "pending",
+        "total": len(target_ids),
+        "results": {}
+    }
+    
+    background_tasks.add_task(_process_triage_job, job_id, target_ids)
+    
+    return {"job_id": job_id, "status": "accepted"}
+
+@app.get("/api/triage-status/{job_id}")
+def get_triage_status(job_id: str):
+    job = triage_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+

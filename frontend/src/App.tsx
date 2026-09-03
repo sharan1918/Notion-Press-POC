@@ -10,7 +10,8 @@ import {
   approveAction, 
   rejectAction, 
   correctClassification, 
-  provideInfo 
+  provideInfo,
+  triageAllEmails 
 } from "./api";
 
 export default function App() {
@@ -98,13 +99,30 @@ export default function App() {
     abortControllersRef.current[id] = cancel;
   }, [emails]);
 
-  // Initial load
+  // Initial load + background auto-triage
   useEffect(() => {
     getEmails().then(data => {
       setEmails(data);
       if (data.length > 0) {
         setSelectedEmailId(data[0].id);
       }
+
+      // Fire batch auto-triage in background (intake filter catches spam instantly)
+      const emailIds = data.map((e: { id: string }) => e.id);
+      triageAllEmails(emailIds).then(triageResults => {
+        setProcessingState(prev => {
+          const merged = { ...prev };
+          for (const [emailId, result] of Object.entries(triageResults)) {
+            // Only apply triage results for emails not already being streamed
+            if (!prev[emailId] || prev[emailId]?.state?.final_status === "processing") {
+              merged[emailId] = result;
+            }
+          }
+          return merged;
+        });
+      }).catch(err => {
+        console.warn("Background triage failed (non-blocking):", err);
+      });
     });
   }, []);
 

@@ -38,18 +38,33 @@ export default function PipelineView({ state, isStreaming = false }: Props) {
   const hasAction = !!state.recommended_action;
   const hasGuardrail = !!state.guardrail_result;
 
+  const intakeResult = state.intake_result;
+  const skippedLLM = intakeResult === "spam_filtered";
+  const skippedByCache = intakeResult === "cache_hit";
+
   const steps = [
     { 
       name: "Ingest Email", 
       active: true, 
       done: true 
     },
+    {
+      name: "Intake Filter",
+      active: true,
+      done: !!intakeResult || hasClassified,
+      pending: isStreaming && !intakeResult && !hasClassified,
+      label: intakeResult === "spam_filtered" ? "⚡ Fast-Path Spam" :
+             intakeResult === "cache_hit" ? "💾 Cache Hit" :
+             (hasClassified || hasAction) ? "Passed to LLM" : undefined
+    },
     { 
       name: "Fetch Corrections & Classify", 
-      active: true, 
-      done: hasClassified && !isError, 
-      pending: isStreaming && !hasClassified,
-      error: isError 
+      active: !skippedLLM && !skippedByCache,
+      done: hasClassified && !isError && !skippedLLM && !skippedByCache, 
+      pending: isStreaming && !hasClassified && !skippedLLM && !skippedByCache,
+      error: isError,
+      skipped: skippedLLM || skippedByCache,
+      label: (skippedLLM || skippedByCache) ? "Skipped ($0.00)" : undefined
     },
     { 
       name: "Determine Action", 
