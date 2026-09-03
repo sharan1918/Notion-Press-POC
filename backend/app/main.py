@@ -234,6 +234,71 @@ def get_status(thread_id: str):
 def get_corrections():
     return [c.model_dump() for c in feedback_store.get_all_corrections()]
 
+class TriageRequest(BaseModel):
+    email_ids: list[str] = []  # Empty = triage all sample emails
+
+@app.post("/api/triage-all")
+async def triage_all_emails(req: TriageRequest = TriageRequest()):
+    """
+    Batch auto-triage: process multiple emails through the LangGraph pipeline.
+    Spam emails are caught by the intake filter instantly (no LLM cost, no delay).
+    Legitimate emails are processed sequentially with a delay to avoid rate-limiting.
+    """
+    from app.config import TRIAGE_DELAY_SECONDS
+
+    target_ids = req.email_ids if req.email_ids else [e["id"] for e in SAMPLE_EMAILS]
+    results = {}
+    llm_call_count = 0
+
+    for email_id in target_ids:
+        try:
+            email = get_sample_email(email_id)
+        except ValueError:
+            continue
+
+        thread_id = f"thread_{email_id}_{uuid.uuid4().hex[:12]}"
+        config = {"configurable": {"thread_id": thread_id}}
+        initial_state = {"email": email}
+
+        # Add delay between LLM calls (not needed for the first call or spam)
+        if llm_call_count > 0:
+            await asyncio.sleep(TRIAGE_DELAY_SECONDS)
+
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(
+                None, lambda: graph.invoke(initial_state, config)
+            )
+            serialized = serialize_state(result)
+            results[email_id] = {"thread_id": thread_id, "state": serialized}
+
+            intake = serialized.get("intake_result")
+            print(
+                f"[TRIAGE] {email.sender_name}: {email.subject} → "
+                f"{serialized.get('final_status', '?')} "
+                f"(intake={intake or 'full_pipeline'})",
+                flush=True
+            )
+
+            # Only count as LLM call if it actually went through the LLM
+            if intake not in ("spam_filtered", "cache_hit"):
+                llm_call_count += 1
+
+        except Exception as e:
+            print(f"[TRIAGE ERROR] {email_id}: {e}", flush=True)
+            results[email_id] = {
+                "thread_id": thread_id,
+                "state": {
+                    "email": email.model_dump(),
+                    "final_status": "error",
+                    "processing_log": [f"Triage error: {str(e)}"],
+                },
+            }
+            llm_call_count += 1  # Still count failed LLM attempts
+
+    return results
+
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+

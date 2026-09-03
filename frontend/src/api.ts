@@ -126,3 +126,12 @@ export async function getCorrections(): Promise<HumanCorrection[]> {
   const res = await fetch(`${BASE}/corrections`);
   return res.json();
 }
+
+export async function triageAllEmails(emailIds: string[] = []): Promise<Record<string, ProcessingResponse>> {
+  const res = await fetch(`${BASE}/triage-all`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email_ids: emailIds }),
+  });
+  return res.json();
+}

@@ -61,5 +61,6 @@ export interface ProcessingResponse {
     correction_count?: number;
     processing_log?: string[];
     final_status?: "executed" | "rejected" | "manual_review" | "error" | "pending_approval" | "pending_info" | "processing";
+    intake_result?: "spam_filtered" | "cache_hit" | null;
   };
 }

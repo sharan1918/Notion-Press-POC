@@ -49,11 +49,23 @@ class HumanCorrection(BaseModel):
     notes: str
     timestamp: str
 
+class FastPathResult(BaseModel):
+    """Result from the intake filter (fast-path spam detection or intent cache hit)."""
+    outcome: Literal["spam_filtered", "cache_hit", "pass_through"]
+    confidence: float = 0.0
+    reason: str = ""
+    # Pre-built classification and action for spam/cache-hit cases
+    classification: EmailClassification | None = None
+    action: RecommendedAction | None = None
+
 class EmailProcessingState(TypedDict):
     # Input
     email: Email
     supplementary_info: str | None         # Additional info provided by user (missing-info flow)
     attachments: list[str]                 # Attachment file URLs/names uploaded by user
+
+    # Intake filter result
+    intake_result: str | None              # "spam_filtered" | "cache_hit" | None (full pipeline)
 
     # Feedback context
     corrections: str                       # Formatted few-shot text from relevant past corrections

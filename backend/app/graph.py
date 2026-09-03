@@ -12,6 +12,8 @@ from app.policy import determine_action, evaluate_guardrails
 from app.config import MAX_LLM_RETRIES, MAX_CORRECTIONS
 from app.prompts import build_prompt
 from app.feedback_store import feedback_store
+from app.intake_filter import check_spam
+from app.intent_cache import intent_cache
 
 load_dotenv(override=True)
 
@@ -99,10 +101,52 @@ def ingest_email(state: EmailProcessingState) -> EmailProcessingState:
     state["final_status"] = "processing"
     state["supplementary_info"] = state.get("supplementary_info", None)
     state["attachments"] = state.get("attachments", [])
+    state["intake_result"] = None
     
     email = state["email"]
     log(state, f"Email received from {email.sender}: {email.subject}")
     return state
+
+def intake_filter_node(state: EmailProcessingState) -> EmailProcessingState:
+    """Fast-path intake filter: deterministic spam check + semantic intent cache."""
+    email = state["email"]
+    
+    # ── Layer 1: Fast-path spam detection ─────────────────────────────────
+    spam_result = check_spam(email)
+    if spam_result.outcome == "spam_filtered":
+        state["intake_result"] = "spam_filtered"
+        state["classification"] = spam_result.classification
+        state["recommended_action"] = spam_result.action
+        state["guardrail_result"] = None
+        state["approval_required"] = False
+        state["missing_info_block"] = False
+        state["final_status"] = "executed"
+        log(state, f"⚡ FAST-PATH: Spam detected — {spam_result.reason}")
+        log(state, f"Action: archive (no LLM used, $0.00 cost)")
+        return state
+    
+    # ── Layer 2: Semantic intent cache lookup ─────────────────────────────
+    cache_result = intent_cache.get_cached_classification(email)
+    if cache_result and cache_result.outcome == "cache_hit":
+        state["intake_result"] = "cache_hit"
+        state["classification"] = cache_result.classification
+        state["final_status"] = "processing"
+        log(state, f"💾 CACHE HIT: Reusing classification '{cache_result.classification.intent}' "
+            f"(similarity={cache_result.confidence:.3f}) — no LLM call")
+        return state
+    
+    # ── Pass through to full LLM pipeline ─────────────────────────────────
+    log(state, f"Intake filter: passed (spam_score={spam_result.confidence:.2f}, no cache hit). Proceeding to LLM.")
+    return state
+
+def route_after_intake(state: EmailProcessingState) -> str:
+    """Route based on intake filter result."""
+    intake = state.get("intake_result")
+    if intake == "spam_filtered":
+        return "execute_action"       # Skip LLM entirely
+    if intake == "cache_hit":
+        return "determine_action"     # Skip LLM, run policy/guardrails
+    return "fetch_and_classify"       # Full pipeline
 
 def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
     email = state["email"]
@@ -135,6 +179,12 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
         state["classification"] = classification
         state["retry_count"] = 0 # reset on success
         log(state, f"Classification successful via {provider_name}: {classification.intent}")
+        
+        # Cache the successful classification for future similar emails
+        try:
+            intent_cache.cache_classification(email, classification)
+        except Exception as cache_err:
+            logger.warning(f"Failed to cache classification: {cache_err}")
     except Exception as e:
         retry_count = state.get("retry_count", 0) + 1
         if retry_count <= MAX_LLM_RETRIES:
@@ -272,14 +322,21 @@ def store_feedback(state: EmailProcessingState) -> EmailProcessingState:
     )
     feedback_store.save_correction(correction)
     
+    # Invalidate intent cache for corrected intent to prevent stale cache hits
+    try:
+        intent_cache.invalidate_for_intent(classification.intent)
+    except Exception as e:
+        logger.warning(f"Failed to invalidate intent cache: {e}")
+    
     # Clear stale state for full re-evaluation
     state["classification"] = None
     state["recommended_action"] = None
     state["guardrail_result"] = None
     state["approval_required"] = False
     state["missing_info_block"] = False
+    state["intake_result"] = None  # Reset so re-evaluation goes through LLM
     
-    log(state, f"Correction stored: {correction.original_intent} -> {correction.corrected_intent}. Re-evaluating.")
+    log(state, f"Correction stored: {correction.original_intent} -> {correction.corrected_intent}. Cache invalidated. Re-evaluating.")
     return state
 
 def execute_action(state: EmailProcessingState) -> EmailProcessingState:
@@ -295,6 +352,7 @@ def create_graph():
     builder = StateGraph(EmailProcessingState)
     
     builder.add_node("ingest_email", ingest_email)
+    builder.add_node("intake_filter", intake_filter_node)
     builder.add_node("fetch_and_classify", fetch_and_classify)
     builder.add_node("determine_action", determine_action_node)
     builder.add_node("request_info", request_info)
@@ -303,7 +361,8 @@ def create_graph():
     builder.add_node("execute_action", execute_action)
     
     builder.add_edge(START, "ingest_email")
-    builder.add_edge("ingest_email", "fetch_and_classify")
+    builder.add_edge("ingest_email", "intake_filter")
+    builder.add_conditional_edges("intake_filter", route_after_intake)
     builder.add_conditional_edges("fetch_and_classify", route_after_classify)
     builder.add_conditional_edges("determine_action", route_after_policy)
     builder.add_edge("request_info", "fetch_and_classify")
