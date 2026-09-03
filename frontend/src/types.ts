@@ -7,6 +7,13 @@ export interface Email {
   timestamp: string;
 }
 
+export interface CreateEmailPayload {
+  sender_name: string;
+  sender: string;
+  subject: string;
+  body: string;
+}
+
 export interface EmailClassification {
   intent: "royalty_payment" | "publishing_status" | "printing_issue" | "cover_design" | "distribution" | "isbn_metadata" | "general_inquiry" | "complaint" | "spam";
   urgency: number;

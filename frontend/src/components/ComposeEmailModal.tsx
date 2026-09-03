@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
-import type { Email } from "../types";
+import { useState, useEffect, useRef } from "react";
+import type { Email, CreateEmailPayload } from "../types";
 import { createEmail } from "../api";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onEmailCreated: (email: Email) => void;
+  initialData?: Partial<CreateEmailPayload>;
 }
 
 interface Preset {
@@ -66,7 +67,7 @@ const PRESETS: Preset[] = [
   },
   {
     id: "custom",
-    label: "Custom Blank",
+    label: "Blank Form",
     icon: "✍️",
     sender_name: "",
     sender: "",
@@ -75,37 +76,56 @@ const PRESETS: Preset[] = [
   },
 ];
 
-export default function ComposeEmailModal({ isOpen, onClose, onEmailCreated }: Props) {
-  const [senderName, setSenderName] = useState("Siddharth Roy");
-  const [sender, setSender] = useState("siddharth.roy@example.com");
-  const [subject, setSubject] = useState("Query regarding distribution on Amazon Kindle international");
-  const [body, setBody] = useState(
-    "Hello Notion Press Team,\n\nMy paperback is already active in India, but I would like to confirm when the eBook version will be accessible to readers in the US and UK on Kindle Unlimited. Is there any additional tax form or royalty configuration I need to complete?\n\nThanks,\nSiddharth"
-  );
+const DEFAULT_FORM_VALUES: CreateEmailPayload = {
+  sender_name: "Siddharth Roy",
+  sender: "siddharth.roy@example.com",
+  subject: "Query regarding distribution on Amazon Kindle international",
+  body: "Hello Notion Press Team,\n\nMy paperback is already active in India, but I would like to confirm when the eBook version will be accessible to readers in the US and UK on Kindle Unlimited. Is there any additional tax form or royalty configuration I need to complete?\n\nThanks,\nSiddharth",
+};
+
+export default function ComposeEmailModal({ isOpen, onClose, onEmailCreated, initialData }: Props) {
+  const [senderName, setSenderName] = useState(initialData?.sender_name ?? DEFAULT_FORM_VALUES.sender_name);
+  const [sender, setSender] = useState(initialData?.sender ?? DEFAULT_FORM_VALUES.sender);
+  const [subject, setSubject] = useState(initialData?.subject ?? DEFAULT_FORM_VALUES.subject);
+  const [body, setBody] = useState(initialData?.body ?? DEFAULT_FORM_VALUES.body);
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isSubmittingRef = useRef(isSubmitting);
+  useEffect(() => {
+    isSubmittingRef.current = isSubmitting;
+  }, [isSubmitting]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen && !isSubmitting) {
+      if (e.key === "Escape" && isOpen && !isSubmittingRef.current) {
         onClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isSubmitting, onClose]);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   const handleSelectPreset = (preset: Preset) => {
-    setActivePreset(preset.id);
-    setSenderName(preset.sender_name);
-    setSender(preset.sender);
-    setSubject(preset.subject);
-    setBody(preset.body);
+    if (preset.id === "custom") {
+      setActivePreset(null);
+      setSenderName("");
+      setSender("");
+      setSubject("");
+      setBody("");
+    } else {
+      setActivePreset(preset.id);
+      setSenderName(preset.sender_name);
+      setSender(preset.sender);
+      setSubject(preset.subject);
+      setBody(preset.body);
+    }
     setError(null);
   };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,7 +207,7 @@ export default function ComposeEmailModal({ isOpen, onClose, onEmailCreated }: P
         </div>
 
         {/* Modal Scrollable Content */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4 text-xs sm:text-sm">
+        <form id="compose-email-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4 text-xs sm:text-sm">
           {error && (
             <div className="p-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg flex items-center gap-2 text-xs">
               <span className="font-bold">⚠️ Error:</span>
@@ -313,8 +333,8 @@ export default function ComposeEmailModal({ isOpen, onClose, onEmailCreated }: P
             Cancel
           </button>
           <button
-            type="button"
-            onClick={handleSubmit}
+            type="submit"
+            form="compose-email-form"
             disabled={isSubmitting}
             className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
           >

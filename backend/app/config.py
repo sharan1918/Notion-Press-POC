@@ -1,3 +1,5 @@
+import os
+
 # LLM Reliability
 MAX_LLM_RETRIES = 2   # 2 retry attempts after initial failure → 3 total LLM attempts
 
@@ -80,3 +82,9 @@ INTENT_CACHE_SIMILARITY_THRESHOLD = 0.90
 # ── Batch Triage ─────────────────────────────────────────────────────────────
 # Delay between sequential LLM calls in batch triage (seconds).
 TRIAGE_DELAY_SECONDS = 3
+
+# ── Author Email Simulation & Ingestion Security ─────────────────────────────
+API_AUTH_KEY = os.getenv("API_AUTH_KEY", "notion-poc-author-key-2026")
+MAX_CUSTOM_EMAILS = int(os.getenv("MAX_CUSTOM_EMAILS", "1000"))
+RATE_LIMIT_EMAILS_PER_MINUTE = int(os.getenv("RATE_LIMIT_EMAILS_PER_MINUTE", "15"))
+

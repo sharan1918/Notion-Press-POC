@@ -1,5 +1,8 @@
+import uuid
+import threading
 from datetime import datetime
 from app.models import Email
+from app.config import MAX_CUSTOM_EMAILS
 
 SAMPLE_EMAILS = [
     {
@@ -85,28 +88,40 @@ SAMPLE_EMAILS = [
 ]
 
 CUSTOM_EMAILS: list[dict] = []
+_email_lock = threading.Lock()
+_ALL_EMAILS_CACHE: list[dict] | None = None
 
 def add_custom_email(sender_name: str, sender: str, subject: str, body: str) -> Email:
-    import uuid
+    global _ALL_EMAILS_CACHE
     new_email_data = {
-        "id": f"mail_{uuid.uuid4().hex[:8]}",
+        "id": f"mail_{uuid.uuid4().hex}",
         "sender": sender.strip(),
         "sender_name": sender_name.strip(),
         "subject": subject.strip(),
         "body": body.strip(),
         "timestamp": datetime.now().isoformat()
     }
-    CUSTOM_EMAILS.insert(0, new_email_data)
+    with _email_lock:
+        CUSTOM_EMAILS.insert(0, new_email_data)
+        if len(CUSTOM_EMAILS) > MAX_CUSTOM_EMAILS:
+            CUSTOM_EMAILS.pop()
+        _ALL_EMAILS_CACHE = None
     return Email(**new_email_data)
 
 def get_all_emails() -> list[dict]:
-    return list(CUSTOM_EMAILS) + list(SAMPLE_EMAILS)
+    global _ALL_EMAILS_CACHE
+    with _email_lock:
+        if _ALL_EMAILS_CACHE is None:
+            _ALL_EMAILS_CACHE = list(CUSTOM_EMAILS) + list(SAMPLE_EMAILS)
+        return list(_ALL_EMAILS_CACHE)
 
 def get_sample_email(email_id: str) -> Email:
-    for data in CUSTOM_EMAILS:
-        if data["id"] == email_id:
-            return Email(**data)
-    for data in SAMPLE_EMAILS:
-        if data["id"] == email_id:
-            return Email(**data)
+    with _email_lock:
+        for data in CUSTOM_EMAILS:
+            if data["id"] == email_id:
+                return Email(**data)
+        for data in SAMPLE_EMAILS:
+            if data["id"] == email_id:
+                return Email(**data)
     raise ValueError(f"Email with ID {email_id} not found")
+
