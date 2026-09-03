@@ -33,8 +33,6 @@ export default function Header() {
         </div>
       </div>
 
-
-
       {/* Right: Actions */}
       <div className="flex items-center gap-2 shrink-0">
         <button

@@ -2,8 +2,12 @@ import os
 import json
 import uuid
 import asyncio
+import re
+import time
+import threading
+from collections import defaultdict
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Header
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import sys
@@ -16,9 +20,11 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-from app.sample_emails import SAMPLE_EMAILS, get_sample_email
+from app.sample_emails import SAMPLE_EMAILS, get_sample_email, get_all_emails, add_custom_email
 from app.graph import create_graph
 from app.feedback_store import feedback_store
+from app.config import API_AUTH_KEY, RATE_LIMIT_EMAILS_PER_MINUTE
+
 
 # Ensure data directory exists
 os.makedirs("data", exist_ok=True)
@@ -93,11 +99,74 @@ class InfoRequest(BaseModel):
     additional_info: str
     attachments: list[str] = []
 
+class CreateEmailRequest(BaseModel):
+    sender_name: str
+    sender: str
+    subject: str
+    body: str
+
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
+class InMemoryRateLimiter:
+    def __init__(self, max_requests: int = 15, window_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.requests = defaultdict(list)
+        self.lock = threading.Lock()
+
+    def check(self, key: str) -> bool:
+        now = time.time()
+        with self.lock:
+            cutoff = now - self.window_seconds
+            valid_timestamps = [t for t in self.requests[key] if t > cutoff]
+            if len(valid_timestamps) >= self.max_requests:
+                self.requests[key] = valid_timestamps
+                return False
+            valid_timestamps.append(now)
+            self.requests[key] = valid_timestamps
+            return True
+
+email_rate_limiter = InMemoryRateLimiter(max_requests=RATE_LIMIT_EMAILS_PER_MINUTE, window_seconds=60)
+
 @app.get("/api/emails")
 def get_emails():
-    return SAMPLE_EMAILS
+    return get_all_emails()
 
-import threading
+@app.post("/api/emails", status_code=201)
+def create_email(
+    req: CreateEmailRequest,
+    request: Request,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key")
+):
+    if not x_api_key or x_api_key != API_AUTH_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+    client_ip = request.client.host if request.client else "unknown"
+    if not email_rate_limiter.check(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded for author email simulation. Maximum 15 emails per minute."
+        )
+
+    if not req.sender_name.strip():
+        raise HTTPException(status_code=400, detail="Sender name is required")
+    if not req.sender.strip():
+        raise HTTPException(status_code=400, detail="Sender email is required")
+    if not EMAIL_REGEX.match(req.sender.strip()):
+        raise HTTPException(status_code=400, detail="Invalid email format")
+    if not req.subject.strip():
+        raise HTTPException(status_code=400, detail="Subject is required")
+    if not req.body.strip():
+        raise HTTPException(status_code=400, detail="Email body is required")
+        
+    created = add_custom_email(
+        sender_name=req.sender_name,
+        sender=req.sender,
+        subject=req.subject,
+        body=req.body
+    )
+    return created.model_dump()
+
 
 @app.get("/api/process-stream/{email_id}")
 async def process_email_stream(email_id: str):
@@ -338,7 +407,7 @@ async def triage_all_emails(background_tasks: BackgroundTasks, req: TriageReques
             detail=f"Too many email IDs requested. Maximum allowed is {MAX_TRIAGE_EMAILS}."
         )
 
-    target_ids = req.email_ids if req.email_ids else [e["id"] for e in SAMPLE_EMAILS]
+    target_ids = req.email_ids if req.email_ids else [e["id"] for e in get_all_emails()]
     
     job_id = f"job_{uuid.uuid4().hex[:12]}"
     triage_jobs[job_id] = {

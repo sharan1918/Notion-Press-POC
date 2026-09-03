@@ -1,9 +1,26 @@
-import type { Email, ProcessingResponse, HumanCorrection } from "./types";
+import type { Email, ProcessingResponse, HumanCorrection, CreateEmailPayload } from "./types";
 
 const BASE = import.meta.env.VITE_API_BASE_URL || "/api";
+const API_KEY = (import.meta.env.VITE_API_KEY as string) || "notion-poc-author-key-2026";
 
 export async function getEmails(): Promise<Email[]> {
   const res = await fetch(`${BASE}/emails`);
+  return res.json();
+}
+
+export async function createEmail(emailData: CreateEmailPayload): Promise<Email> {
+  const res = await fetch(`${BASE}/emails`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": API_KEY,
+    },
+    body: JSON.stringify(emailData),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to create email (${res.status})`);
+  }
   return res.json();
 }
 
