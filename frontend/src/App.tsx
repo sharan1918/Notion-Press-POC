@@ -107,13 +107,31 @@ export default function App() {
         setSelectedEmailId(data[0].id);
       }
 
+      // Initialize placeholder "processing" state for all emails immediately
+      // so users see active progress indicators right away
+      setProcessingState(prev => {
+        const initialMap: Record<string, ProcessingResponse> = { ...prev };
+        data.forEach((email: Email) => {
+          if (!initialMap[email.id]) {
+            initialMap[email.id] = {
+              thread_id: "",
+              state: {
+                email,
+                final_status: "processing",
+                processing_log: ["Queued for AI triage..."]
+              }
+            };
+          }
+        });
+        return initialMap;
+      });
+
       // Fire batch auto-triage in background (intake filter catches spam instantly)
       const emailIds = data.map((e: { id: string }) => e.id);
-      triageAllEmails(emailIds).then(triageResults => {
+      triageAllEmails(emailIds, (partialResults) => {
         setProcessingState(prev => {
           const merged = { ...prev };
-          for (const [emailId, result] of Object.entries(triageResults)) {
-            // Only apply triage results for emails not already being streamed
+          for (const [emailId, result] of Object.entries(partialResults)) {
             if (!prev[emailId] || prev[emailId]?.state?.final_status === "processing") {
               merged[emailId] = result;
             }
@@ -163,33 +181,81 @@ export default function App() {
     }
   };
 
+  const [mobileTab, setMobileTab] = useState<"inbox" | "detail" | "pipeline">("inbox");
+
+  const handleSelectEmail = (id: string) => {
+    setSelectedEmailId(id);
+    setMobileTab("detail");
+  };
+
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden transition-colors duration-300">
+    <div className="flex flex-col h-screen h-[100dvh] w-full bg-background text-foreground overflow-hidden transition-colors duration-300">
       <Header />
       
-      <div className="flex flex-1 overflow-hidden">
-        <EmailList 
-          emails={emails} 
-          selectedEmailId={selectedEmailId} 
-          onSelect={setSelectedEmailId} 
-          processingState={processingState}
-          streamingIds={streamingIds}
-        />
-        
-        {selectedEmail && (
-          <EmailDetail 
-            email={selectedEmail}
-            processingState={currentState}
-            isStreaming={isSelectedStreaming}
-            onProcess={(id) => startStreaming(id, true)}
-            onApprove={(threadId) => handleUpdate(selectedEmailId!, approveAction(threadId))}
-            onReject={(threadId) => handleUpdate(selectedEmailId!, rejectAction(threadId))}
-            onCorrect={(threadId, intent, notes) => handleUpdate(selectedEmailId!, correctClassification(threadId, intent, notes))}
-            onProvideInfo={(threadId, info, attachments) => handleUpdate(selectedEmailId!, provideInfo(threadId, info, attachments))}
+      {/* Main Content Area: Responsive Mobile Stack / Desktop Multi-Column */}
+      <div className="flex flex-1 w-full overflow-hidden relative">
+        {/* Email List Column: Base Layer (Always rendered, full width on mobile) */}
+        <div className="flex w-full md:w-80 lg:w-88 shrink-0 flex-col h-full border-r border-border bg-card overflow-hidden">
+          <EmailList 
+            emails={emails} 
+            selectedEmailId={selectedEmailId} 
+            onSelect={handleSelectEmail} 
+            processingState={processingState}
+            streamingIds={streamingIds}
           />
-        )}
+        </div>
         
-        <div className="w-96 border-l border-border bg-card p-6 overflow-y-auto">
+        {/* Email Detail Column: Slide-over Layer 1 on mobile, Column 2 on desktop */}
+        <div className={`
+          absolute inset-0 z-10 bg-background transition-transform duration-300 ease-in-out
+          ${mobileTab === "inbox" ? "translate-x-full" : "translate-x-0"}
+          md:relative md:translate-x-0 md:flex md:flex-1 md:flex-col md:h-full md:overflow-hidden md:min-w-0 md:z-auto
+        `}>
+          {selectedEmail ? (
+            <EmailDetail 
+              email={selectedEmail}
+              processingState={currentState}
+              isStreaming={isSelectedStreaming}
+              onProcess={(id) => startStreaming(id, true)}
+              onApprove={(threadId) => handleUpdate(selectedEmailId!, approveAction(threadId))}
+              onReject={(threadId) => handleUpdate(selectedEmailId!, rejectAction(threadId))}
+              onCorrect={(threadId, intent, notes) => handleUpdate(selectedEmailId!, correctClassification(threadId, intent, notes))}
+              onProvideInfo={(threadId, info, attachments) => handleUpdate(selectedEmailId!, provideInfo(threadId, info, attachments))}
+              onBackToInbox={() => setMobileTab("inbox")}
+              onViewPipeline={() => setMobileTab("pipeline")}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-muted-foreground text-sm space-y-2">
+              <span className="text-3xl">📬</span>
+              <p className="font-semibold text-foreground">No Email Selected</p>
+              <p className="text-xs max-w-xs">Select an email from the inbox to view details and AI triage actions.</p>
+              <button 
+                onClick={() => setMobileTab("inbox")} 
+                className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold md:hidden"
+              >
+                Go to Inbox
+              </button>
+            </div>
+          )}
+        </div>
+        
+        {/* Pipeline View Column: Slide-over Layer 2 on mobile, Column 3 on desktop */}
+        <div className={`
+          absolute inset-0 z-20 bg-card transition-transform duration-300 ease-in-out
+          ${mobileTab === "pipeline" ? "translate-x-0" : "translate-x-full"}
+          lg:relative lg:translate-x-0 lg:flex lg:w-96 lg:shrink-0 lg:border-l lg:border-border lg:p-4 lg:sm:p-6 lg:overflow-y-auto lg:flex-col lg:h-full lg:z-auto
+        `}>
+          {/* Mobile Back Button inside Pipeline View */}
+          <div className="flex items-center justify-between mb-4 md:hidden pb-3 border-b border-border">
+            <button 
+              onClick={() => setMobileTab("detail")} 
+              className="text-xs font-semibold text-primary flex items-center gap-1 hover:underline cursor-pointer"
+            >
+              <span>←</span> Back to Email
+            </button>
+            <span className="text-xs font-mono font-bold text-muted-foreground">AI Pipeline View</span>
+          </div>
+
           <PipelineView 
             state={currentState?.state || null} 
             isStreaming={isSelectedStreaming}

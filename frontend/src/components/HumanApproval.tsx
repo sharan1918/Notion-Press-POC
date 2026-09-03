@@ -31,22 +31,22 @@ export default function HumanApproval({ state, onApprove, onReject, onCorrect }:
       </p>
 
       {!showCorrection ? (
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-4">
           <button 
             onClick={onApprove}
-            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded font-medium transition-colors"
+            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded text-xs sm:text-sm font-medium transition-colors cursor-pointer"
           >
             ✅ Approve & Execute
           </button>
           <button 
             onClick={onReject}
-            className="flex-1 bg-destructive hover:bg-destructive/80 text-white py-2 rounded font-medium transition-colors"
+            className="flex-1 bg-destructive hover:bg-destructive/80 text-white py-2 px-3 rounded text-xs sm:text-sm font-medium transition-colors cursor-pointer"
           >
             ❌ Reject (End)
           </button>
           <button 
             onClick={() => setShowCorrection(true)}
-            className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2 rounded font-medium transition-colors"
+            className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2 px-3 rounded text-xs sm:text-sm font-medium transition-colors cursor-pointer"
           >
             ✏️ Correct AI
           </button>

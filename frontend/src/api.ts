@@ -127,11 +127,46 @@ export async function getCorrections(): Promise<HumanCorrection[]> {
   return res.json();
 }
 
-export async function triageAllEmails(emailIds: string[] = []): Promise<Record<string, ProcessingResponse>> {
+export async function triageAllEmails(
+  emailIds: string[] = [],
+  onProgress?: (results: Record<string, ProcessingResponse>) => void
+): Promise<Record<string, ProcessingResponse>> {
   const res = await fetch(`${BASE}/triage-all`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email_ids: emailIds }),
   });
-  return res.json();
+  const data = await res.json();
+  
+  // If the endpoint returned immediate results (backwards compatibility)
+  if (!data.job_id) {
+    if (onProgress) onProgress(data);
+    return data;
+  }
+
+  // Poll for job updates progressively
+  const jobId = data.job_id;
+  const pollInterval = 1000;
+  const maxAttempts = 90; // up to 90 seconds
+  
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+    try {
+      const statusRes = await fetch(`${BASE}/triage-status/${jobId}`);
+      if (!statusRes.ok) continue;
+      const jobData = await statusRes.json();
+      
+      if (jobData.results && Object.keys(jobData.results).length > 0 && onProgress) {
+        onProgress(jobData.results);
+      }
+
+      if (jobData.status === "completed") {
+        return jobData.results || {};
+      }
+    } catch {
+      // Continue polling on transient errors
+    }
+  }
+
+  return {};
 }

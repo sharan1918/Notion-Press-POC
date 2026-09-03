@@ -39,23 +39,43 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
   const archivedCount = emails.filter(isArchived).length;
   const focusedCount = emails.length - archivedCount;
 
+  const [filterType, setFilterType] = useState<"all" | "unread" | "needs_action">("all");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "sender">("newest");
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+
   const filteredEmails = emails.filter(email => {
     const matchesSearch = email.sender_name.toLowerCase().includes(search.toLowerCase()) || 
                           email.subject.toLowerCase().includes(search.toLowerCase()) ||
                           email.body.toLowerCase().includes(search.toLowerCase());
     
     const archived = isArchived(email);
+    const inCorrectTab = tab === "archive" ? archived : !archived;
+    if (!matchesSearch || !inCorrectTab) return false;
 
-    if (tab === "archive") {
-      return matchesSearch && archived;
+    const state = processingState[email.id]?.state;
+    if (filterType === "unread") {
+      return !state?.final_status || state.final_status === "processing";
     }
-    return matchesSearch && !archived;
+    if (filterType === "needs_action") {
+      return state?.final_status === "pending_approval" || state?.final_status === "pending_info";
+    }
+    return true;
+  }).sort((a, b) => {
+    if (sortOrder === "sender") {
+      return a.sender_name.localeCompare(b.sender_name);
+    }
+    if (sortOrder === "oldest") {
+      return (a.id || "").localeCompare(b.id || "");
+    }
+    // newest (default by id descending)
+    return (b.id || "").localeCompare(a.id || "");
   });
 
   return (
-    <div className="w-80 sm:w-88 border-r border-border bg-card flex flex-col h-full overflow-hidden shrink-0 select-none">
+    <div className="w-full md:w-80 lg:w-88 border-r border-border bg-card flex flex-col h-full overflow-hidden shrink-0 select-none">
       {/* Outlook Tabs: Focused | Archive */}
-      <div className="border-b border-border bg-card px-3 pt-2 pb-1.5 shrink-0">
+      <div className="border-b border-border bg-card px-3 pt-2 pb-1.5 shrink-0 relative">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-4 text-xs font-semibold">
             <button
@@ -89,9 +109,108 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
             </button>
           </div>
 
-          <div className="flex items-center gap-2 text-muted-foreground text-xs">
-            <span title="Filter" className="hover:text-foreground cursor-pointer">≡</span>
-            <span title="Sort" className="hover:text-foreground cursor-pointer">⇅</span>
+          <div className="flex items-center gap-1 text-muted-foreground text-xs relative">
+            {/* Filter Button & Menu */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowFilterMenu(!showFilterMenu);
+                  setShowSortMenu(false);
+                }}
+                title="Filter emails"
+                className={`p-1 rounded hover:bg-secondary transition-colors cursor-pointer flex items-center justify-center ${
+                  filterType !== "all" ? "text-primary font-bold bg-primary/10" : "hover:text-foreground"
+                }`}
+              >
+                <span className="text-sm leading-none">≡</span>
+              </button>
+
+              {showFilterMenu && (
+                <div className="absolute right-0 top-full mt-1.5 z-50 w-36 bg-popover border border-border rounded-lg shadow-lg py-1 text-xs">
+                  <div className="px-2.5 py-1 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                    Filter By
+                  </div>
+                  <button
+                    onClick={() => { setFilterType("all"); setShowFilterMenu(false); }}
+                    className={`w-full text-left px-2.5 py-1.5 hover:bg-secondary transition-colors flex items-center justify-between cursor-pointer ${
+                      filterType === "all" ? "text-primary font-semibold" : "text-foreground"
+                    }`}
+                  >
+                    <span>All Emails</span>
+                    {filterType === "all" && <span>✓</span>}
+                  </button>
+                  <button
+                    onClick={() => { setFilterType("needs_action"); setShowFilterMenu(false); }}
+                    className={`w-full text-left px-2.5 py-1.5 hover:bg-secondary transition-colors flex items-center justify-between cursor-pointer ${
+                      filterType === "needs_action" ? "text-primary font-semibold" : "text-foreground"
+                    }`}
+                  >
+                    <span>Needs Action</span>
+                    {filterType === "needs_action" && <span>✓</span>}
+                  </button>
+                  <button
+                    onClick={() => { setFilterType("unread"); setShowFilterMenu(false); }}
+                    className={`w-full text-left px-2.5 py-1.5 hover:bg-secondary transition-colors flex items-center justify-between cursor-pointer ${
+                      filterType === "unread" ? "text-primary font-semibold" : "text-foreground"
+                    }`}
+                  >
+                    <span>Pending / Live</span>
+                    {filterType === "unread" && <span>✓</span>}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Sort Button & Menu */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowSortMenu(!showSortMenu);
+                  setShowFilterMenu(false);
+                }}
+                title="Sort emails"
+                className={`p-1 rounded hover:bg-secondary transition-colors cursor-pointer flex items-center justify-center ${
+                  sortOrder !== "newest" ? "text-primary font-bold bg-primary/10" : "hover:text-foreground"
+                }`}
+              >
+                <span className="text-sm leading-none">⇅</span>
+              </button>
+
+              {showSortMenu && (
+                <div className="absolute right-0 top-full mt-1.5 z-50 w-36 bg-popover border border-border rounded-lg shadow-lg py-1 text-xs">
+                  <div className="px-2.5 py-1 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                    Sort By
+                  </div>
+                  <button
+                    onClick={() => { setSortOrder("newest"); setShowSortMenu(false); }}
+                    className={`w-full text-left px-2.5 py-1.5 hover:bg-secondary transition-colors flex items-center justify-between cursor-pointer ${
+                      sortOrder === "newest" ? "text-primary font-semibold" : "text-foreground"
+                    }`}
+                  >
+                    <span>Newest First</span>
+                    {sortOrder === "newest" && <span>✓</span>}
+                  </button>
+                  <button
+                    onClick={() => { setSortOrder("oldest"); setShowSortMenu(false); }}
+                    className={`w-full text-left px-2.5 py-1.5 hover:bg-secondary transition-colors flex items-center justify-between cursor-pointer ${
+                      sortOrder === "oldest" ? "text-primary font-semibold" : "text-foreground"
+                    }`}
+                  >
+                    <span>Oldest First</span>
+                    {sortOrder === "oldest" && <span>✓</span>}
+                  </button>
+                  <button
+                    onClick={() => { setSortOrder("sender"); setShowSortMenu(false); }}
+                    className={`w-full text-left px-2.5 py-1.5 hover:bg-secondary transition-colors flex items-center justify-between cursor-pointer ${
+                      sortOrder === "sender" ? "text-primary font-semibold" : "text-foreground"
+                    }`}
+                  >
+                    <span>Sender Name</span>
+                    {sortOrder === "sender" && <span>✓</span>}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -175,12 +294,12 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
                   {email.body}
                 </p>
 
-                {/* Status indicator pill if streaming or processed */}
+                {/* Status indicator pill if streaming or queued/processing */}
                 {isItemStreaming ? (
-                  <div className="mt-1.5 flex items-center gap-1.5 text-primary">
+                  <div className="mt-1.5 flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 w-fit">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
-                    <span className="text-[10px] font-mono font-medium text-primary">
-                      AI Triaging...
+                    <span className="text-[10px] font-mono font-medium text-primary tracking-tight">
+                      Analyzing...
                     </span>
                   </div>
                 ) : status ? (

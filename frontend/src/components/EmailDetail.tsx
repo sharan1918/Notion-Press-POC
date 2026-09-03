@@ -12,6 +12,8 @@ interface Props {
   onReject: (threadId: string) => void;
   onCorrect: (threadId: string, intent: string, notes: string) => void;
   onProvideInfo: (threadId: string, info: string, attachments: string[]) => void;
+  onBackToInbox?: () => void;
+  onViewPipeline?: () => void;
 }
 
 // Avatar color helper
@@ -39,7 +41,9 @@ export default function EmailDetail({
   onApprove, 
   onReject, 
   onCorrect, 
-  onProvideInfo 
+  onProvideInfo,
+  onBackToInbox,
+  onViewPipeline
 }: Props) {
   const state = processingState?.state;
   const threadId = processingState?.thread_id;
@@ -52,70 +56,92 @@ export default function EmailDetail({
   return (
     <div className="flex-1 overflow-y-auto bg-background flex flex-col h-full">
       {/* Top Action Ribbon (Outlook Style) */}
-      <div className="border-b border-border bg-card px-6 py-2.5 flex items-center justify-between shrink-0 select-none">
-        <div className="flex items-center gap-4 text-xs font-semibold text-muted-foreground">
+      <div className="border-b border-border bg-card px-3 sm:px-6 py-2.5 flex items-center justify-between shrink-0 select-none gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 text-xs font-semibold text-muted-foreground">
+          {/* Mobile Back Button */}
+          {onBackToInbox && (
+            <button 
+              onClick={onBackToInbox}
+              className="md:hidden text-primary font-bold hover:underline flex items-center gap-1 cursor-pointer mr-1"
+            >
+              <span>←</span> Inbox
+            </button>
+          )}
+
           <button className="hover:text-foreground flex items-center gap-1 cursor-pointer">
-            <span>↩</span> Reply
+            <span>↩</span> <span className="hidden sm:inline">Reply</span>
           </button>
-          <button className="hover:text-foreground flex items-center gap-1 cursor-pointer">
+          <button className="hover:text-foreground hidden sm:flex items-center gap-1 cursor-pointer">
             <span>↩↩</span> Reply all
           </button>
-          <button className="hover:text-foreground flex items-center gap-1 cursor-pointer">
+          <button className="hover:text-foreground hidden sm:flex items-center gap-1 cursor-pointer">
             <span>↪</span> Forward
           </button>
         </div>
 
         {/* AI Action Trigger & Live Status */}
         <div className="flex items-center gap-2">
+          {/* Mobile Shortcut to view AI Pipeline */}
+          {onViewPipeline && (
+            <button 
+              onClick={onViewPipeline}
+              className="lg:hidden bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 px-2 py-1 rounded text-xs font-mono flex items-center gap-1 cursor-pointer"
+              title="View AI Pipeline DAG"
+            >
+              <span>⚡</span>
+              <span className="hidden sm:inline">Pipeline</span>
+            </button>
+          )}
+
           {isProcessing ? (
             <span className="text-xs text-primary font-mono flex items-center gap-2 px-2.5 py-1 bg-primary/10 rounded-md border border-primary/20">
               <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
-              <span className="font-semibold">Live AI Triaging...</span>
+              <span className="font-semibold text-[11px] sm:text-xs">Triaging...</span>
             </span>
           ) : state ? (
             <button 
               onClick={() => onProcess(email.id)}
-              className="bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border px-2.5 py-1 rounded text-xs font-mono flex items-center gap-1.5 transition-all cursor-pointer"
+              className="bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border px-2 py-1 sm:px-2.5 sm:py-1 rounded text-xs font-mono flex items-center gap-1.5 transition-all cursor-pointer"
               title="Re-run AI pipeline"
             >
               <span>🔄</span>
-              <span>Re-analyze</span>
+              <span className="hidden sm:inline">Re-analyze</span>
             </button>
           ) : (
             <button 
               onClick={() => onProcess(email.id)}
-              className="bg-secondary/70 hover:bg-secondary text-foreground hover:text-primary hover:border-primary/40 border border-border px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+              className="bg-secondary/70 hover:bg-secondary text-foreground hover:text-primary hover:border-primary/40 border border-border px-2.5 py-1 sm:px-3 sm:py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
             >
               <span className="text-sm">🤖</span>
-              <span>Process with AI</span>
+              <span>Process</span>
             </button>
           )}
         </div>
       </div>
 
       {/* Main Email Viewport */}
-      <div className="p-6 md:p-8 space-y-6 max-w-4xl">
+      <div className="p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 max-w-4xl">
         {/* Subject Header */}
-        <h1 className="text-lg md:text-xl font-bold text-foreground tracking-tight">
+        <h1 className="text-base sm:text-lg md:text-xl font-bold text-foreground tracking-tight break-words">
           {email.subject}
         </h1>
 
         {/* Sender Info Row */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${avatarColor}`}>
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 sm:gap-4">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+            <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 sm:mt-0 ${avatarColor}`}>
               {initials.toUpperCase()}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-foreground">{email.sender_name}</span>
-                <span className="text-xs text-muted-foreground">&lt;{email.sender}&gt;</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-xs sm:text-sm font-bold text-foreground truncate">{email.sender_name}</span>
+                <span className="text-[11px] sm:text-xs text-muted-foreground truncate">&lt;{email.sender}&gt;</span>
               </div>
-              <p className="text-xs text-muted-foreground">To: Notion Press Author Support &lt;support@notionpress.com&gt;</p>
+              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">To: Notion Press Support &lt;support@notionpress.com&gt;</p>
             </div>
           </div>
 
-          <div className="text-xs text-muted-foreground font-mono shrink-0">
+          <div className="text-[11px] sm:text-xs text-muted-foreground font-mono shrink-0 pl-11 sm:pl-0">
             {new Date(email.timestamp).toLocaleString(undefined, { 
               weekday: 'short', month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' 
             })}
