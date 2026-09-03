@@ -88,7 +88,8 @@ def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification
 def log(state: dict, message: str):
     timestamp = datetime.now().strftime("%H:%M:%S")
     state.setdefault("processing_log", []).append(f"[{timestamp}] {message}")
-    print(f"[{timestamp}] {message}")
+    print(f"[{timestamp}] {message}", flush=True)
+    logger.info(f"[{timestamp}] {message}")
 
 def ingest_email(state: EmailProcessingState) -> EmailProcessingState:
     # Initialize basic state
@@ -109,10 +110,17 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
     # If we are re-classifying after correction, use previous classification intent to fetch relevant corrections
     prev_classification = state.get("classification")
     predicted_intent = prev_classification.intent if prev_classification else None
-    
-    corrections = feedback_store.get_relevant_corrections(predicted_intent=predicted_intent)
+    email_query = f"Subject: {email.subject}\nBody: {email.body}"
+    corrections = feedback_store.get_relevant_corrections(
+        query_text=email_query,
+        predicted_intent=predicted_intent
+    )
     corrections_text = feedback_store.format_for_prompt(corrections)
     state["corrections"] = corrections_text
+    if corrections:
+        log(state, f"RAG: Injected {len(corrections)} relevant historical human correction(s) into prompt")
+    else:
+        log(state, "RAG: No relevant past corrections found above similarity threshold")
     
     prompt = build_prompt(
         email_subject=email.subject, 
