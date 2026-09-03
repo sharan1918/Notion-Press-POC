@@ -190,9 +190,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen h-[100dvh] w-full bg-background text-foreground overflow-hidden transition-colors duration-300">
-      <Header 
-        unreadCount={emails.length}
-      />
+      <Header />
       
       {/* Main Content Area: Responsive Mobile Stack / Desktop Multi-Column */}
       <div className="flex flex-1 w-full overflow-hidden relative">

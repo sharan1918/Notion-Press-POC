@@ -1,10 +1,6 @@
 import { useState, useEffect } from "react";
 
-interface HeaderProps {
-  unreadCount?: number;
-}
-
-export default function Header({ unreadCount = 0 }: HeaderProps) {
+export default function Header() {
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") === "dark" || 
       (!("theme" in localStorage) && window.matchMedia("(prefers-color-scheme: dark)").matches);
