@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-from app.sample_emails import SAMPLE_EMAILS, get_sample_email
+from app.sample_emails import SAMPLE_EMAILS, get_sample_email, get_all_emails, add_custom_email
 from app.graph import create_graph
 from app.feedback_store import feedback_store
 
@@ -93,9 +93,34 @@ class InfoRequest(BaseModel):
     additional_info: str
     attachments: list[str] = []
 
+class CreateEmailRequest(BaseModel):
+    sender_name: str
+    sender: str
+    subject: str
+    body: str
+
 @app.get("/api/emails")
 def get_emails():
-    return SAMPLE_EMAILS
+    return get_all_emails()
+
+@app.post("/api/emails", status_code=201)
+def create_email(req: CreateEmailRequest):
+    if not req.sender_name.strip():
+        raise HTTPException(status_code=400, detail="Sender name is required")
+    if not req.sender.strip():
+        raise HTTPException(status_code=400, detail="Sender email is required")
+    if not req.subject.strip():
+        raise HTTPException(status_code=400, detail="Subject is required")
+    if not req.body.strip():
+        raise HTTPException(status_code=400, detail="Email body is required")
+        
+    created = add_custom_email(
+        sender_name=req.sender_name,
+        sender=req.sender,
+        subject=req.subject,
+        body=req.body
+    )
+    return created.model_dump()
 
 import threading
 
@@ -338,7 +363,7 @@ async def triage_all_emails(background_tasks: BackgroundTasks, req: TriageReques
             detail=f"Too many email IDs requested. Maximum allowed is {MAX_TRIAGE_EMAILS}."
         )
 
-    target_ids = req.email_ids if req.email_ids else [e["id"] for e in SAMPLE_EMAILS]
+    target_ids = req.email_ids if req.email_ids else [e["id"] for e in get_all_emails()]
     
     job_id = f"job_{uuid.uuid4().hex[:12]}"
     triage_jobs[job_id] = {

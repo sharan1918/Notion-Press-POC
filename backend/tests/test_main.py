@@ -34,3 +34,44 @@ def test_triage_all_too_many_emails():
 def test_triage_status_not_found():
     response = client.get("/api/triage-status/invalid_job_id")
     assert response.status_code == 404
+
+def test_get_emails_includes_samples():
+    response = client.get("/api/emails")
+    assert response.status_code == 200
+    emails = response.json()
+    assert len(emails) >= 10
+    ids = [e["id"] for e in emails]
+    assert "1" in ids
+
+def test_create_custom_email():
+    payload = {
+        "sender_name": "Test Author",
+        "sender": "test.author@example.com",
+        "subject": "Test Subject For Realtime Evaluation",
+        "body": "Hello, I am testing the realtime evaluation flow."
+    }
+    response = client.post("/api/emails", json=payload)
+    assert response.status_code == 201
+    created = response.json()
+    assert created["id"].startswith("mail_")
+    assert created["sender_name"] == "Test Author"
+    assert created["sender"] == "test.author@example.com"
+    assert created["subject"] == "Test Subject For Realtime Evaluation"
+    assert "timestamp" in created
+
+    # Verify it is returned at the top of get_emails
+    get_res = client.get("/api/emails")
+    assert get_res.status_code == 200
+    all_emails = get_res.json()
+    assert all_emails[0]["id"] == created["id"]
+
+def test_create_custom_email_validation_failure():
+    # Missing subject
+    response = client.post("/api/emails", json={
+        "sender_name": "Test Author",
+        "sender": "test@example.com",
+        "subject": "   ",
+        "body": "Some body"
+    })
+    assert response.status_code == 400
+    assert "Subject is required" in response.json()["detail"]

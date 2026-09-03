@@ -84,7 +84,28 @@ SAMPLE_EMAILS = [
     }
 ]
 
+CUSTOM_EMAILS: list[dict] = []
+
+def add_custom_email(sender_name: str, sender: str, subject: str, body: str) -> Email:
+    import uuid
+    new_email_data = {
+        "id": f"mail_{uuid.uuid4().hex[:8]}",
+        "sender": sender.strip(),
+        "sender_name": sender_name.strip(),
+        "subject": subject.strip(),
+        "body": body.strip(),
+        "timestamp": datetime.now().isoformat()
+    }
+    CUSTOM_EMAILS.insert(0, new_email_data)
+    return Email(**new_email_data)
+
+def get_all_emails() -> list[dict]:
+    return list(CUSTOM_EMAILS) + list(SAMPLE_EMAILS)
+
 def get_sample_email(email_id: str) -> Email:
+    for data in CUSTOM_EMAILS:
+        if data["id"] == email_id:
+            return Email(**data)
     for data in SAMPLE_EMAILS:
         if data["id"] == email_id:
             return Email(**data)

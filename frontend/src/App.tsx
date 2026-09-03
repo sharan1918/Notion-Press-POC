@@ -3,6 +3,7 @@ import Header from "./components/Header";
 import EmailList from "./components/EmailList";
 import EmailDetail from "./components/EmailDetail";
 import PipelineView from "./components/PipelineView";
+import ComposeEmailModal from "./components/ComposeEmailModal";
 import type { Email, ProcessingResponse } from "./types";
 import { 
   getEmails, 
@@ -182,10 +183,19 @@ export default function App() {
   };
 
   const [mobileTab, setMobileTab] = useState<"inbox" | "detail" | "pipeline">("inbox");
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
 
   const handleSelectEmail = (id: string) => {
     setSelectedEmailId(id);
     setMobileTab("detail");
+  };
+
+  const handleEmailCreated = (newEmail: Email) => {
+    setEmails(prev => [newEmail, ...prev]);
+    setSelectedEmailId(newEmail.id);
+    setMobileTab("detail");
+    // Immediately initiate live SSE stream processing for the new author email
+    startStreaming(newEmail.id, true);
   };
 
   return (
@@ -202,6 +212,7 @@ export default function App() {
             onSelect={handleSelectEmail} 
             processingState={processingState}
             streamingIds={streamingIds}
+            onOpenCompose={() => setIsComposeOpen(true)}
           />
         </div>
         
@@ -262,6 +273,12 @@ export default function App() {
           />
         </div>
       </div>
+
+      <ComposeEmailModal
+        isOpen={isComposeOpen}
+        onClose={() => setIsComposeOpen(false)}
+        onEmailCreated={handleEmailCreated}
+      />
     </div>
   );
 }

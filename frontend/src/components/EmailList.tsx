@@ -7,6 +7,7 @@ interface Props {
   onSelect: (id: string) => void;
   processingState: Record<string, ProcessingResponse>;
   streamingIds?: Set<string>;
+  onOpenCompose?: () => void;
 }
 
 // Outlook-style avatar colors based on initial
@@ -26,7 +27,7 @@ function getAvatarColor(name: string) {
   return avatarColors[hash % avatarColors.length];
 }
 
-export default function EmailList({ emails, selectedEmailId, onSelect, processingState, streamingIds }: Props) {
+export default function EmailList({ emails, selectedEmailId, onSelect, processingState, streamingIds, onOpenCompose }: Props) {
   const [tab, setTab] = useState<"focused" | "archive">("focused");
   const [search, setSearch] = useState("");
 
@@ -213,6 +214,21 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
             </div>
           </div>
         </div>
+
+        {/* Compose / Test Email Button */}
+        {onOpenCompose && (
+          <button
+            onClick={onOpenCompose}
+            className="w-full mb-2 py-1.5 px-3 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+            title="Compose and send an email as an author for real-time testing"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <rect width="20" height="16" x="2" y="4" rx="2"/>
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+            </svg>
+            <span>Simulate Author Email</span>
+          </button>
+        )}
 
         {/* Search */}
         <div className="relative">

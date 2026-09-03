@@ -7,6 +7,24 @@ export async function getEmails(): Promise<Email[]> {
   return res.json();
 }
 
+export async function createEmail(emailData: {
+  sender_name: string;
+  sender: string;
+  subject: string;
+  body: string;
+}): Promise<Email> {
+  const res = await fetch(`${BASE}/emails`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(emailData),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to create email (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function processEmail(id: string): Promise<ProcessingResponse> {
   const res = await fetch(`${BASE}/process/${id}`, { method: "POST" });
   return res.json();
