@@ -62,8 +62,8 @@ export default function MissingInfoForm({ missingInfo, onSubmit }: Props) {
           <span className="text-[10px] text-muted-foreground">Supported: .jpg, .png, .mp4, .pdf</span>
         </div>
 
-        <div className="flex items-center gap-3 mb-3">
-          <label className="bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-medium px-3 py-2 rounded cursor-pointer transition-colors flex items-center gap-2 border border-border">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3">
+          <label className="bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-medium px-3 py-2 rounded cursor-pointer transition-colors flex items-center gap-2 border border-border shrink-0">
             <span>📁</span> Choose File
             <input 
               type="file" 
@@ -74,21 +74,21 @@ export default function MissingInfoForm({ missingInfo, onSubmit }: Props) {
             />
           </label>
           
-          <span className="text-xs text-muted-foreground">or quick-add sample proof:</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">or quick-add sample proof:</span>
           
           <button 
             type="button" 
             onClick={() => addQuickAttachment("smudged_pages_45_50.jpg")}
-            className="text-[11px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded hover:bg-blue-500/30 transition-colors"
+            className="text-[11px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded hover:bg-blue-500/30 transition-colors cursor-pointer"
           >
-            📷 smudged_pages_45_50.jpg
+            📷 smudged_pages.jpg
           </button>
           <button 
             type="button" 
             onClick={() => addQuickAttachment("print_defect_proof.mp4")}
-            className="text-[11px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-1 rounded hover:bg-purple-500/30 transition-colors"
+            className="text-[11px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-1 rounded hover:bg-purple-500/30 transition-colors cursor-pointer"
           >
-            🎥 print_defect_proof.mp4
+            🎥 defect_proof.mp4
           </button>
         </div>
 
