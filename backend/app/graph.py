@@ -94,7 +94,7 @@ def log(state: dict, message: str):
     logger.info(f"[{timestamp}] {message}")
 
 def ingest_email(state: EmailProcessingState) -> EmailProcessingState:
-    # Initialize basic state
+    # Initialize basic state consistently across all execution paths
     state["retry_count"] = 0
     state["correction_count"] = 0
     state["processing_log"] = state.get("processing_log", [])
@@ -102,6 +102,12 @@ def ingest_email(state: EmailProcessingState) -> EmailProcessingState:
     state["supplementary_info"] = state.get("supplementary_info", None)
     state["attachments"] = state.get("attachments", [])
     state["intake_result"] = None
+    state["classification"] = None
+    state["recommended_action"] = None
+    state["guardrail_result"] = None
+    state["approval_required"] = False
+    state["missing_info_block"] = False
+    state["human_decision"] = None
     
     email = state["email"]
     log(state, f"Email received from {email.sender}: {email.subject}")
@@ -130,6 +136,10 @@ def intake_filter_node(state: EmailProcessingState) -> EmailProcessingState:
     if cache_result and cache_result.outcome == "cache_hit":
         state["intake_result"] = "cache_hit"
         state["classification"] = cache_result.classification
+        state["recommended_action"] = None
+        state["guardrail_result"] = None
+        state["approval_required"] = False
+        state["missing_info_block"] = False
         state["final_status"] = "processing"
         log(state, f"💾 CACHE HIT: Reusing classification '{cache_result.classification.intent}' "
             f"(similarity={cache_result.confidence:.3f}) — no LLM call")

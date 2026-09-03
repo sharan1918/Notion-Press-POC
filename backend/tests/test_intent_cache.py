@@ -144,3 +144,23 @@ class TestCacheClear:
 
         test_cache.clear()
         assert test_cache.collection.count() == 0
+
+
+class TestCacheRobustness:
+    def test_invalid_chroma_port_fallback(self, tmp_path, monkeypatch):
+        """Verify invalid CHROMA_PORT environment string safely falls back to 8000."""
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.setenv("CHROMA_HOST", "chroma.internal")
+        monkeypatch.setenv("CHROMA_PORT", "not-a-number")
+
+        with patch("chromadb.HttpClient") as mock_client:
+            mock_col = MagicMock()
+            mock_client.return_value.get_or_create_collection.return_value = mock_col
+            cache = IntentCache(
+                persist_directory=str(tmp_path / "cache_robust"),
+                collection_name="test_port_fallback",
+            )
+            # Port passed to HttpClient must be 8000
+            _, kwargs = mock_client.call_args
+            assert kwargs.get("port") == 8000

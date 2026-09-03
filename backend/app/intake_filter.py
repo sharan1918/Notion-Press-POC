@@ -10,6 +10,7 @@ Scoring layers:
 3. Text heuristics: excessive caps, URL density, exclamation marks
 """
 
+import os
 import re
 import logging
 from app.models import Email, EmailClassification, RecommendedAction, FastPathResult
@@ -28,6 +29,38 @@ _EXCLAMATION_WEIGHT = 0.10
 _URL_PATTERN = re.compile(r'https?://\S+|www\.\S+', re.IGNORECASE)
 
 
+def _build_keyword_regex(keyword: str) -> re.Pattern:
+    """Build word-boundary-aware regex pattern for a keyword to prevent substring false positives."""
+    if keyword.startswith("$"):
+        escaped_num = re.escape(keyword[1:])
+        return re.compile(r'(?:\$|\b\$)' + escaped_num + r'\b', re.IGNORECASE)
+    return re.compile(r'\b' + re.escape(keyword) + r'\b', re.IGNORECASE)
+
+
+_COMPILED_SPAM_PATTERNS = {
+    keyword: _build_keyword_regex(keyword) for keyword in SPAM_KEYWORDS
+}
+
+
+def get_active_blocklist() -> set[str]:
+    """
+    Return active sender blocklist, merging static SPAM_SENDER_BLOCKLIST
+    with optional runtime blocklist file (data/spam_blocklist.txt).
+    """
+    blocklist = set(SPAM_SENDER_BLOCKLIST)
+    custom_path = os.environ.get("SPAM_BLOCKLIST_PATH", "data/spam_blocklist.txt")
+    if os.path.exists(custom_path):
+        try:
+            with open(custom_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    domain = line.strip().lower()
+                    if domain and not domain.startswith("#"):
+                        blocklist.add(domain)
+        except Exception as e:
+            logger.warning(f"Could not load custom spam blocklist from {custom_path}: {e}")
+    return blocklist
+
+
 def _extract_sender_domain(sender_email: str) -> str:
     """Extract domain from sender email address."""
     if "@" in sender_email:
@@ -37,14 +70,14 @@ def _extract_sender_domain(sender_email: str) -> str:
 
 def _compute_keyword_score(text: str) -> tuple[float, list[str]]:
     """
-    Score text against weighted spam keywords.
+    Score text against weighted spam keywords using word-boundary matching.
     Returns (total_score, list_of_matched_keywords).
     """
-    text_lower = text.lower()
     total = 0.0
     matched = []
     for keyword, weight in SPAM_KEYWORDS.items():
-        if keyword in text_lower:
+        pattern = _COMPILED_SPAM_PATTERNS.get(keyword)
+        if pattern and pattern.search(text):
             total += weight
             matched.append(keyword)
     return total, matched
@@ -94,7 +127,8 @@ def check_spam(email: Email) -> FastPathResult:
     combined_text = f"{email.subject} {email.body}"
 
     # ── Layer 1: Sender blocklist (instant match) ────────────────────────
-    if sender_domain in SPAM_SENDER_BLOCKLIST:
+    active_blocklist = get_active_blocklist()
+    if sender_domain in active_blocklist:
         reason = f"Sender domain '{sender_domain}' is on the blocklist"
         logger.info(f"[INTAKE] SPAM (blocklist): {email.sender} — {reason}")
         return _build_spam_result(confidence=0.99, reason=reason)

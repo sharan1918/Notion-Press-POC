@@ -34,7 +34,6 @@ SPAM_KEYWORDS = {
     "bestseller hack": 0.30,
     "increase your rankings": 0.25,
     "seo services": 0.30,
-    "seo": 0.15,
     "just $": 0.20,
     "$99": 0.20,
     "$49": 0.20,

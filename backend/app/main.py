@@ -245,6 +245,14 @@ async def triage_all_emails(req: TriageRequest = TriageRequest()):
     Legitimate emails are processed sequentially with a delay to avoid rate-limiting.
     """
     from app.config import TRIAGE_DELAY_SECONDS
+    from app.intake_filter import check_spam
+
+    MAX_TRIAGE_EMAILS = 50
+    if len(req.email_ids) > MAX_TRIAGE_EMAILS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many email IDs requested. Maximum allowed is {MAX_TRIAGE_EMAILS}."
+        )
 
     target_ids = req.email_ids if req.email_ids else [e["id"] for e in SAMPLE_EMAILS]
     results = {}
@@ -260,8 +268,12 @@ async def triage_all_emails(req: TriageRequest = TriageRequest()):
         config = {"configurable": {"thread_id": thread_id}}
         initial_state = {"email": email}
 
-        # Add delay between LLM calls (not needed for the first call or spam)
-        if llm_call_count > 0:
+        # Check if email is deterministic spam upfront to know whether an LLM delay is needed
+        pre_spam_check = check_spam(email)
+        is_deterministic_spam = pre_spam_check.outcome == "spam_filtered"
+
+        # Add delay between actual LLM calls (skip for first call or deterministic spam)
+        if llm_call_count > 0 and not is_deterministic_spam:
             await asyncio.sleep(TRIAGE_DELAY_SECONDS)
 
         loop = asyncio.get_running_loop()
@@ -294,7 +306,9 @@ async def triage_all_emails(req: TriageRequest = TriageRequest()):
                     "processing_log": [f"Triage error: {str(e)}"],
                 },
             }
-            llm_call_count += 1  # Still count failed LLM attempts
+            # Only increment LLM count if this was NOT deterministic spam
+            if not is_deterministic_spam:
+                llm_call_count += 1
 
     return results
 

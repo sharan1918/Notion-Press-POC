@@ -38,6 +38,17 @@ class TestSenderBlocklist:
         result = check_spam(email)
         assert result.outcome == "pass_through"
 
+    def test_dynamic_blocklist_file(self, tmp_path, monkeypatch):
+        """Verify dynamic blocklist loaded from custom file."""
+        custom_file = tmp_path / "custom_blocklist.txt"
+        custom_file.write_text("evil-spammer.org\n# comment line\nanother-spammer.net\n")
+        monkeypatch.setenv("SPAM_BLOCKLIST_PATH", str(custom_file))
+
+        email = _make_email(sender="promo@evil-spammer.org", subject="Exclusive Deal")
+        result = check_spam(email)
+        assert result.outcome == "spam_filtered"
+        assert "evil-spammer.org" in result.reason
+
 
 class TestKeywordScoring:
     def test_heavy_spam_keywords_trigger(self):
@@ -61,14 +72,21 @@ class TestKeywordScoring:
         assert result.outcome == "pass_through"
 
     def test_keyword_score_calculation(self):
-        """Verify the keyword scoring function returns correct matches."""
+        """Verify the keyword scoring function returns correct matches with word boundaries."""
         text = "guaranteed seo services click here for $99"
         score, matched = _compute_keyword_score(text)
         assert "guaranteed" in matched
-        assert "seo" in matched
+        assert "seo services" in matched
         assert "click here" in matched
         assert "$99" in matched
         assert score > 0.50
+
+    def test_word_boundary_avoids_substring_false_positives(self):
+        """Verify words containing spam substrings as part of other words do not match."""
+        text = "I guarantee you my bookstore is not cheap"
+        score, matched = _compute_keyword_score(text)
+        # 'guaranteed' should not match 'guarantee'
+        assert "guaranteed" not in matched
 
 
 class TestLegitimateEmails:

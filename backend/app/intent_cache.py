@@ -50,7 +50,11 @@ class IntentCache:
     def _init_client(self):
         """Initialize ChromaDB client and collection."""
         chroma_host = os.environ.get("CHROMA_HOST")
-        chroma_port = int(os.environ.get("CHROMA_PORT", "8000"))
+        try:
+            chroma_port = int(os.environ.get("CHROMA_PORT", "8000"))
+        except (ValueError, TypeError):
+            chroma_port = 8000
+
         chroma_ssl = os.environ.get("CHROMA_SSL", "false").lower() == "true"
 
         if chroma_host:
@@ -136,7 +140,8 @@ class IntentCache:
             return None
 
         meta = metadatas[0]
-        similarity = 1.0 - distances[0]
+        raw_distance = distances[0]
+        similarity = max(0.0, min(1.0, 1.0 - raw_distance))
 
         if similarity >= threshold:
             # Reconstruct classification from cached metadata
