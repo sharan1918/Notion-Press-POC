@@ -77,9 +77,9 @@ This guide covers the production architecture, zero-cost deployment workflow, an
 ### 1. Continuous Integration (`.github/workflows/ci.yml`)
 Triggers automatically on every `push` and `pull_request` to `main` and `develop`:
 - **Backend Job**:
-  - Installs Python 3.11 with `uv`
+  - Installs Python 3.12 with `uv`
   - Installs all dependencies from `requirements.txt`
-  - Runs the full `pytest` suite (`backend/tests/test_graph.py`)
+  - Runs the full `pytest` suite (`backend/tests/`)
 - **Frontend Job**:
   - Sets up Node.js 20 with npm caching
   - Runs `oxlint` static code analysis
