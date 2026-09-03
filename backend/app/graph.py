@@ -117,6 +117,10 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
     )
     corrections_text = feedback_store.format_for_prompt(corrections)
     state["corrections"] = corrections_text
+    if corrections:
+        log(state, f"RAG: Injected {len(corrections)} relevant historical human correction(s) into prompt")
+    else:
+        log(state, "RAG: No relevant past corrections found above similarity threshold")
     
     prompt = build_prompt(
         email_subject=email.subject, 

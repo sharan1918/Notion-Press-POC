@@ -122,6 +122,10 @@ class FeedbackStore:
             os.makedirs(os.path.dirname(self.json_path) or ".", exist_ok=True)
             with open(self.json_path, "w", encoding="utf-8") as f:
                 json.dump([c.model_dump() for c in self._corrections_cache], f, indent=2)
+            logger.info(
+                f"[RAG] Saved human correction: '{correction.email_subject}' "
+                f"({correction.original_intent} -> {correction.corrected_intent})"
+            )
 
     def get_all_corrections(self) -> list[HumanCorrection]:
         """Return all stored corrections."""
@@ -147,12 +151,16 @@ class FeedbackStore:
         with self.lock:
             results: list[HumanCorrection] = []
             seen_keys = set()
+            total_count = self.collection.count()
+            logger.info(
+                f"[RAG] Querying vector store | Total stored: {total_count} | Threshold: {threshold:.2f}"
+            )
 
-            if query_text and self.collection.count() > 0:
+            if query_text and total_count > 0:
                 try:
                     query_res = self.collection.query(
                         query_texts=[query_text],
-                        n_results=min(n_results, self.collection.count())
+                        n_results=min(n_results, total_count)
                     )
 
                     metadatas = query_res.get("metadatas", [[]])[0]
@@ -161,17 +169,28 @@ class FeedbackStore:
                     for meta, dist in zip(metadatas, distances):
                         # With cosine space: distance = 1 - cosine_similarity
                         similarity = 1.0 - dist
+                        subj = meta.get("email_subject", "Unknown")
                         if similarity >= threshold:
+                            logger.info(
+                                f"[RAG Match] Similarity: {similarity:.3f} >= {threshold:.2f} | "
+                                f"Subject: '{subj}' -> {meta.get('corrected_intent')}"
+                            )
                             c = HumanCorrection(**meta)
                             key = f"{c.email_subject}_{c.timestamp}"
                             if key not in seen_keys:
                                 seen_keys.add(key)
                                 results.append(c)
+                        else:
+                            logger.info(
+                                f"[RAG Filtered] Similarity: {similarity:.3f} < {threshold:.2f} | "
+                                f"Subject: '{subj}'"
+                            )
                 except Exception as e:
                     logger.error(f"Error querying ChromaDB: {e}")
 
             # If semantic search produced results, return them
             if results:
+                logger.info(f"[RAG] Semantic search returned {len(results)} relevant correction(s)")
                 return results
 
             # Fallback to category / recent if no query_text provided or semantic match is empty
@@ -180,8 +199,10 @@ class FeedbackStore:
                     c for c in self._corrections_cache
                     if c.corrected_intent == predicted_intent or c.original_intent == predicted_intent
                 ][:n_results]
+                logger.info(f"[RAG Fallback] Category fallback matched {len(category_matches)} correction(s)")
                 return category_matches
 
+            logger.info("[RAG] No matching historical corrections above threshold")
             return results
 
     def format_for_prompt(self, corrections: list[HumanCorrection]) -> str:
