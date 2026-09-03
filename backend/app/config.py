@@ -59,6 +59,19 @@ SPAM_SENDER_BLOCKLIST = {
 # Minimum aggregate spam score to classify without LLM
 SPAM_CONFIDENCE_THRESHOLD = 0.80
 
+from dataclasses import dataclass
+
+@dataclass
+class SpamHeuristics:
+    caps_ratio_threshold: float = 0.40
+    caps_ratio_weight: float = 0.15
+    url_count_threshold: int = 2
+    url_count_weight: float = 0.10
+    exclamation_threshold: int = 3
+    exclamation_weight: float = 0.10
+
+SPAM_HEURISTICS_CONFIG = SpamHeuristics()
+
 # ── Intake Filter: Semantic Intent Cache ─────────────────────────────────────
 # Cosine similarity threshold for intent cache hits.
 # Only near-duplicate emails (>= 0.90) reuse cached classifications.
@@ -66,5 +79,4 @@ INTENT_CACHE_SIMILARITY_THRESHOLD = 0.90
 
 # ── Batch Triage ─────────────────────────────────────────────────────────────
 # Delay between sequential LLM calls in batch triage (seconds).
-# Free-tier Groq has 8000 TPM — spacing calls prevents 429 rate limits.
 TRIAGE_DELAY_SECONDS = 3

@@ -14,27 +14,23 @@ import os
 import re
 import logging
 from app.models import Email, EmailClassification, RecommendedAction, FastPathResult
-from app.config import SPAM_KEYWORDS, SPAM_SENDER_BLOCKLIST, SPAM_CONFIDENCE_THRESHOLD
+from app.config import SPAM_KEYWORDS, SPAM_SENDER_BLOCKLIST, SPAM_CONFIDENCE_THRESHOLD, SPAM_HEURISTICS_CONFIG
 
 logger = logging.getLogger(__name__)
-
-# ── Heuristic weight contributions ───────────────────────────────────────────
-_CAPS_RATIO_THRESHOLD = 0.40     # If > 40% uppercase chars → suspicious
-_CAPS_RATIO_WEIGHT = 0.15
-_URL_COUNT_THRESHOLD = 2         # 3+ URLs → suspicious
-_URL_COUNT_WEIGHT = 0.10
-_EXCLAMATION_THRESHOLD = 3       # 4+ exclamation marks → suspicious
-_EXCLAMATION_WEIGHT = 0.10
 
 _URL_PATTERN = re.compile(r'https?://\S+|www\.\S+', re.IGNORECASE)
 
 
 def _build_keyword_regex(keyword: str) -> re.Pattern:
-    """Build word-boundary-aware regex pattern for a keyword to prevent substring false positives."""
-    if keyword.startswith("$"):
-        escaped_num = re.escape(keyword[1:])
-        return re.compile(r'(?:\$|\b\$)' + escaped_num + r'\b', re.IGNORECASE)
-    return re.compile(r'\b' + re.escape(keyword) + r'\b', re.IGNORECASE)
+    """
+    Build word-boundary-aware regex pattern for a keyword to prevent substring false positives.
+    Note: \\b uses ASCII boundaries by default. In Python 3, re.UNICODE is default, but
+    \\b behavior around non-Latin scripts can still be surprising.
+    """
+    escaped = re.escape(keyword)
+    left_bound = r'(?<!\w)' if not keyword[0].isalnum() else r'\b'
+    right_bound = r'(?!\w)' if not keyword[-1].isalnum() else r'\b'
+    return re.compile(left_bound + escaped + right_bound, re.IGNORECASE | re.UNICODE)
 
 
 _COMPILED_SPAM_PATTERNS = {
@@ -55,8 +51,13 @@ def get_active_blocklist() -> set[str]:
                 for line in f:
                     domain = line.strip().lower()
                     if domain and not domain.startswith("#"):
-                        blocklist.add(domain)
-        except Exception as e:
+                        if len(domain) < 255 and re.match(r'^[a-z0-9.-]+\.[a-z]{2,}$', domain):
+                            blocklist.add(domain)
+                        else:
+                            logger.warning(f"Skipped invalid blocklist domain: {domain}")
+        except FileNotFoundError:
+            pass
+        except OSError as e:
             logger.warning(f"Could not load custom spam blocklist from {custom_path}: {e}")
     return blocklist
 
@@ -80,36 +81,37 @@ def _compute_keyword_score(text: str) -> tuple[float, list[str]]:
         if pattern and pattern.search(text):
             total += weight
             matched.append(keyword)
+            if total >= SPAM_CONFIDENCE_THRESHOLD:
+                break
     return total, matched
 
 
-def _compute_heuristic_score(subject: str, body: str) -> tuple[float, list[str]]:
+def _compute_heuristic_score(combined_text: str) -> tuple[float, list[str]]:
     """
     Score text with structural heuristics (caps ratio, URL count, exclamation density).
     Returns (total_score, list_of_triggered_heuristics).
     """
-    combined = f"{subject} {body}"
     score = 0.0
     reasons = []
 
     # Caps ratio
-    alpha_chars = [c for c in combined if c.isalpha()]
+    alpha_chars = [c for c in combined_text if c.isalpha()]
     if alpha_chars:
         caps_ratio = sum(1 for c in alpha_chars if c.isupper()) / len(alpha_chars)
-        if caps_ratio > _CAPS_RATIO_THRESHOLD:
-            score += _CAPS_RATIO_WEIGHT
+        if caps_ratio > SPAM_HEURISTICS_CONFIG.caps_ratio_threshold:
+            score += SPAM_HEURISTICS_CONFIG.caps_ratio_weight
             reasons.append(f"High caps ratio: {caps_ratio:.0%}")
 
     # URL density
-    url_count = len(_URL_PATTERN.findall(combined))
-    if url_count > _URL_COUNT_THRESHOLD:
-        score += _URL_COUNT_WEIGHT
+    url_count = len(_URL_PATTERN.findall(combined_text))
+    if url_count > SPAM_HEURISTICS_CONFIG.url_count_threshold:
+        score += SPAM_HEURISTICS_CONFIG.url_count_weight
         reasons.append(f"URL count: {url_count}")
 
     # Exclamation marks
-    excl_count = combined.count("!")
-    if excl_count > _EXCLAMATION_THRESHOLD:
-        score += _EXCLAMATION_WEIGHT
+    excl_count = combined_text.count("!")
+    if excl_count > SPAM_HEURISTICS_CONFIG.exclamation_threshold:
+        score += SPAM_HEURISTICS_CONFIG.exclamation_weight
         reasons.append(f"Exclamation marks: {excl_count}")
 
     return score, reasons
@@ -137,8 +139,7 @@ def check_spam(email: Email) -> FastPathResult:
     keyword_score, matched_keywords = _compute_keyword_score(combined_text)
 
     # ── Layer 3: Text heuristics ─────────────────────────────────────────
-    heuristic_score, heuristic_reasons = _compute_heuristic_score(email.subject, email.body)
-
+    heuristic_score, heuristic_reasons = _compute_heuristic_score(combined_text)
     total_score = keyword_score + heuristic_score
 
     if total_score >= SPAM_CONFIDENCE_THRESHOLD:
@@ -147,11 +148,11 @@ def check_spam(email: Email) -> FastPathResult:
             all_reasons.append(f"Keywords: {', '.join(matched_keywords)}")
         all_reasons.extend(heuristic_reasons)
         reason = f"Spam score {total_score:.2f} >= {SPAM_CONFIDENCE_THRESHOLD} — {'; '.join(all_reasons)}"
-        logger.info(f"[INTAKE] SPAM (heuristic): {email.sender} — {reason}")
-        return _build_spam_result(confidence=min(total_score, 1.0), reason=reason)
+        logger.info(f"[INTAKE] SPAM (score={total_score:.2f}): {email.sender} — {reason}")
+        return _build_spam_result(confidence=min(0.99, total_score), reason=reason)
 
     # ── Pass through to LLM pipeline ────────────────────────────────────
-    logger.info(
+    logger.debug(
         f"[INTAKE] PASS: {email.sender} — spam score {total_score:.2f} < {SPAM_CONFIDENCE_THRESHOLD}"
     )
     return FastPathResult(outcome="pass_through", confidence=total_score, reason="Below spam threshold")

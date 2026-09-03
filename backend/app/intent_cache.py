@@ -10,8 +10,10 @@ for that intent category are removed to prevent stale results.
 """
 
 import os
-import logging
+import hashlib
 import threading
+import logging
+import json
 from typing import Optional
 
 import chromadb
@@ -84,7 +86,8 @@ class IntentCache:
         Called after a successful LLM classification.
         """
         doc_text = f"Subject: {email.subject}\nBody: {email.body}"
-        doc_id = f"cache_{email.id}_{abs(hash(doc_text))}"
+        hash_hex = hashlib.sha256(doc_text.encode('utf-8')).hexdigest()[:16]
+        doc_id = f"cache_{email.id}_{hash_hex}"
 
         metadata = {
             "email_id": email.id,
@@ -92,8 +95,8 @@ class IntentCache:
             "urgency": classification.urgency,
             "confidence": classification.confidence,
             "classification_explanation": classification.classification_explanation,
-            "key_details": "|".join(classification.key_details),
-            "missing_information": "|".join(classification.missing_information),
+            "key_details": json.dumps(classification.key_details),
+            "missing_information": json.dumps(classification.missing_information),
         }
 
         with self.lock:
@@ -144,14 +147,25 @@ class IntentCache:
         similarity = max(0.0, min(1.0, 1.0 - raw_distance))
 
         if similarity >= threshold:
-            # Reconstruct classification from cached metadata
+            try:
+                key_details = json.loads(meta.get("key_details", "[]"))
+            except json.JSONDecodeError:
+                val = meta.get("key_details", "")
+                key_details = val.split("|") if val else []
+                
+            try:
+                missing_info = json.loads(meta.get("missing_information", "[]"))
+            except json.JSONDecodeError:
+                val = meta.get("missing_information", "")
+                missing_info = val.split("|") if val else []
+
             classification = EmailClassification(
                 intent=meta["intent"],
                 urgency=int(meta["urgency"]),
                 confidence=float(meta["confidence"]),
                 classification_explanation=meta.get("classification_explanation", "Cached classification"),
-                key_details=meta.get("key_details", "").split("|") if meta.get("key_details") else [],
-                missing_information=meta.get("missing_information", "").split("|") if meta.get("missing_information") else [],
+                key_details=key_details,
+                missing_information=missing_info,
             )
 
             logger.info(
@@ -182,6 +196,7 @@ class IntentCache:
                 # Query all entries matching this intent
                 results = self.collection.get(
                     where={"intent": intent},
+                    include=["metadatas"]
                 )
                 ids_to_delete = results.get("ids", [])
                 if ids_to_delete:
@@ -199,8 +214,8 @@ class IntentCache:
         with self.lock:
             try:
                 self.client.delete_collection(self.collection_name)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[CACHE] Could not delete collection '{self.collection_name}': {e}")
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
                 metadata={"hnsw:space": "cosine"},

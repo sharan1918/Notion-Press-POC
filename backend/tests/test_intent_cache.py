@@ -90,12 +90,31 @@ class TestCacheHit:
         classification = _make_classification("publishing_status")
         test_cache.cache_classification(email, classification)
 
+    def test_exact_duplicate_hits(self, test_cache):
+        """Verify exact text duplicate triggers a cache hit."""
+        email = _make_email(email_id="1", subject="When will my book go live?", body="I approved the final proof two days ago.")
+        classification = _make_classification("publishing_status")
+        test_cache.cache_classification(email, classification)
+
         # Same text
         duplicate = _make_email(email_id="2", subject="When will my book go live?", body="I approved the final proof two days ago.")
         result = test_cache.get_cached_classification(duplicate)
         assert result is not None
         assert result.outcome == "cache_hit"
         assert result.classification.intent == "publishing_status"
+
+    def test_cache_roundtrip_with_pipe(self, test_cache):
+        """Verify caching preserves fields containing the '|' character."""
+        email = _make_email(email_id="1", subject="Pipe test", body="Testing the | character.")
+        classification = _make_classification("general_inquiry")
+        classification.key_details = ["Detail 1 | has pipe", "Detail 2"]
+        classification.missing_information = ["Info 1 | pipe here"]
+        test_cache.cache_classification(email, classification)
+
+        result = test_cache.get_cached_classification(email)
+        assert result is not None
+        assert result.classification.key_details == ["Detail 1 | has pipe", "Detail 2"]
+        assert result.classification.missing_information == ["Info 1 | pipe here"]
 
 
 class TestCacheInvalidation:

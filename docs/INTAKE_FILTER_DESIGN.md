@@ -136,6 +136,7 @@ Add intake filter configuration constants:
 - `SPAM_SENDER_BLOCKLIST`: Set of known spam sender domains.
 - `SPAM_CONFIDENCE_THRESHOLD`: Float (default `0.80`).
 - `INTENT_CACHE_SIMILARITY_THRESHOLD`: Float (default `0.90`).
+- `TRIAGE_DELAY_SECONDS`: Int (default `3`). Note: Free-tier Groq has 8000 TPM — spacing calls prevents 429 rate limits during batch triage.
 
 ---
 

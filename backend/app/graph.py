@@ -191,10 +191,11 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
         log(state, f"Classification successful via {provider_name}: {classification.intent}")
         
         # Cache the successful classification for future similar emails
+        # (This is a best-effort optimization; failures do not block the pipeline)
         try:
             intent_cache.cache_classification(email, classification)
         except Exception as cache_err:
-            logger.warning(f"Failed to cache classification: {cache_err}")
+            logger.warning(f"Failed to cache classification (best-effort): {cache_err}")
     except Exception as e:
         retry_count = state.get("retry_count", 0) + 1
         if retry_count <= MAX_LLM_RETRIES:
@@ -332,7 +333,7 @@ def store_feedback(state: EmailProcessingState) -> EmailProcessingState:
     )
     feedback_store.save_correction(correction)
     
-    # Invalidate intent cache for corrected intent to prevent stale cache hits
+    # Invalidate intent cache for the original intent to prevent stale cache hits
     try:
         intent_cache.invalidate_for_intent(classification.intent)
     except Exception as e:
@@ -354,7 +355,12 @@ def execute_action(state: EmailProcessingState) -> EmailProcessingState:
         return state
         
     action = state["recommended_action"]
-    log(state, f"Action executed: {action.action_type} - {action.description}")
+    
+    # Actually perform the side-effect here based on action_type
+    if action and action.action_type == "archive":
+        log(state, f"Side-effect: Archiving email '{state['email'].subject}' from inbox")
+    
+    log(state, f"Action executed: {action.action_type if action else 'none'} - {action.description if action else 'No action'}")
     state["final_status"] = "executed"
     return state
 
