@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+from datetime import datetime
 from typing import Optional
 import chromadb
 from chromadb.config import Settings
@@ -10,87 +11,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_PERSIST_DIR = "data/chromadb"
 DEFAULT_COLLECTION_NAME = "author_knowledge_base"
 
-# Curated knowledge documents for Notion Press Author Support
-SEED_KNOWLEDGE_DOCUMENTS = [
-    # ── General Inquiry: Publishing Steps ─────────────────────────────────────
-    {
-        "id": "kb_publishing_roadmap",
-        "title": "Notion Press Self-Publishing Roadmap & Steps",
-        "intent": "general_inquiry",
-        "content": (
-            "Notion Press 5-Step Self-Publishing Process:\n"
-            "1. Project Creation: Sign up on notionpress.com and initiate a new book project.\n"
-            "2. Manuscript Upload: Upload your manuscript in MS Word (.docx) or print-ready PDF format. "
-            "Supported trim sizes include 5x8 inches, 6x9 inches, and standard A5.\n"
-            "3. Cover Design: Design your cover using the online cover creator or upload your own 300 DPI CMYK cover file.\n"
-            "4. Pricing & ISBN: Set your retail MRP using our royalty calculator. Notion Press provides free ISBN assignment for both paperback and eBook formats.\n"
-            "5. Proof Approval & Launch: Review and approve your digital galley proof. Once approved, the book enters print production and syndication. "
-            "The standard end-to-end timeline from manuscript upload to live publication is 7 to 14 business days."
-        ),
-    },
-    # ── General Inquiry: Royalties & Rights ────────────────────────────────────
-    {
-        "id": "kb_royalty_policy",
-        "title": "Author Royalty Calculation & Payout Schedule",
-        "intent": "general_inquiry",
-        "content": (
-            "Pricing and Author Royalties Policy:\n"
-            "- DIY self-publishing on Notion Press is 100% free with no mandatory paid packages.\n"
-            "- Profit Formula: Authors earn 100% of the Net Author Profit on every copy sold. "
-            "Net Profit = MRP - Production/Printing Cost - Distribution Margin.\n"
-            "- Payout Schedule: Royalties are calculated on a calendar-month basis and disbursed directly to the author's registered bank account by the 10th of each following month for reconciled sales.\n"
-            "- Minimum Threshold: The minimum payout threshold is ₹1,000. Balances below ₹1,000 roll over automatically to the subsequent month.\n"
-            "- Copyright & Ownership: The author retains 100% intellectual property, adaptation, and copyright. Notion Press operates on a non-exclusive author agreement, allowing authors to unpublish or revise content at any time."
-        ),
-    },
-    # ── General Inquiry: ISBN & Copyright ─────────────────────────────────────
-    {
-        "id": "kb_isbn_guidelines",
-        "title": "ISBN Allocation & Barcode Guidelines",
-        "intent": "general_inquiry",
-        "content": (
-            "ISBN Allocation and Barcodes:\n"
-            "- Free 13-digit ISBNs are assigned by Notion Press for both paperback and eBook editions upon project setup.\n"
-            "- Authors who already have their own ISBN registered through the Raja Rammohun Roy National Agency can register it at no charge.\n"
-            "- EAN-13 barcodes are automatically generated and printed on the bottom-right corner of the back cover.\n"
-            "- ISBN Immutability: International ISBN standards dictate that once an ISBN is assigned and registered, it cannot be modified or transferred to another book title. Substantial revisions (>20% text alteration or trim size change) require a new ISBN."
-        ),
-    },
-    # ── Publishing Status: Production SLAs ────────────────────────────────────
-    {
-        "id": "kb_production_slas",
-        "title": "Production Turnaround & Go-Live SLAs Post-Proof Approval",
-        "intent": "publishing_status",
-        "content": (
-            "Go-Live Timelines After Final Proof Approval:\n"
-            "- Proof Validation: Once the author approves the digital proof, pre-press validation and printer spooling take 48 to 72 hours.\n"
-            "- Notion Press Online Store: The book goes live for purchase within 3 to 5 business days.\n"
-            "- Amazon India & Flipkart Syndication: Distribution feeds push listings to Amazon and Flipkart within 7 to 14 business days post proof approval.\n"
-            "- Retailer Sync Period: Initial listings on Amazon or Flipkart may display 'Temporarily Out of Stock' for the first 24 to 48 hours while the retailer's inventory ingestion engine caches the product details and barcode.\n"
-            "- Hardcover Editions: Require 10 to 14 business days due to hardcase binding and dry-mounting.\n"
-            "- eBooks (Kindle/Kobo): Go live within 3 to 5 business days."
-        ),
-    },
-    # ── Distribution: Indexing & Marketplace Channels ────────────────────────
-    {
-        "id": "kb_distribution_indexing",
-        "title": "Distribution Channels & Marketplace Catalog Indexing",
-        "intent": "distribution",
-        "content": (
-            "Distribution Channels and Marketplace Synchronization:\n"
-            "- Domestic Channels: Notion Press Store, Amazon.in, and Flipkart.\n"
-            "- Catalog Indexing Lag: When a book is syndicated, metadata (title, author, ISBN, price, description) is transmitted via automated EDI feeds. Because Amazon and Flipkart refresh search indexes asynchronously, it typically takes 5 to 7 business days for the book to appear in customer search results.\n"
-            "- Print-on-Demand (POD) Model: Notion Press books are manufactured upon customer order. Books do not sit in centralized warehouse inventory; orders are printed, bound, and dispatched within 48 hours of order placement.\n"
-            "- International Distribution: Available across 150+ countries via Amazon.com (US, UK, Europe) and IngramSpark. Global POD distribution setup takes 2 to 3 weeks for international retailer activation."
-        ),
-    },
-]
-
 
 class AuthorKnowledgeBase:
     """
     Persistent ChromaDB vector store for Notion Press operational policies and author FAQs.
-    Shares the existing ChromaDB instance and client configuration.
+    Allows dynamic PDF/document ingestion, deletion, and semantic RAG retrieval without hardcoded seed data.
     """
 
     def __init__(
@@ -103,14 +28,17 @@ class AuthorKnowledgeBase:
         self.lock = threading.RLock()
         self.client = None
         self.collection = None
-        self._in_memory_docs: list[dict] = list(SEED_KNOWLEDGE_DOCUMENTS)
+        # Fallback in-memory storage when ChromaDB is unavailable
+        self._in_memory_docs: list[dict] = []
+        # In-memory document registry for quick metadata lookups
+        self._doc_registry: dict[str, dict] = {}
 
         with self.lock:
             self._init_chroma_client()
-            self._seed_default_knowledge()
+            self._sync_registry_from_chroma()
 
     def _init_chroma_client(self):
-        """Initialize ChromaDB client matching feedback_store / intent_cache configuration."""
+        """Initialize ChromaDB client."""
         chroma_host = os.environ.get("CHROMA_HOST")
         chroma_port = int(os.environ.get("CHROMA_PORT", "8000"))
         chroma_ssl = os.environ.get("CHROMA_SSL", "false").lower() == "true"
@@ -141,29 +69,189 @@ class AuthorKnowledgeBase:
             self.client = None
             self.collection = None
 
-    def _seed_default_knowledge(self):
-        """Seed default knowledge documents into ChromaDB if not already present."""
+    def _sync_registry_from_chroma(self):
+        """Reconstruct document registry from existing ChromaDB chunks on startup."""
         if not self.collection:
             return
 
         try:
             count = self.collection.count()
             if count == 0:
-                logger.info(f"[KB] Seeding {len(SEED_KNOWLEDGE_DOCUMENTS)} documents into ChromaDB...")
-                ids = [doc["id"] for doc in SEED_KNOWLEDGE_DOCUMENTS]
-                documents = [doc["content"] for doc in SEED_KNOWLEDGE_DOCUMENTS]
-                metadatas = [
-                    {"title": doc["title"], "intent": doc["intent"]}
-                    for doc in SEED_KNOWLEDGE_DOCUMENTS
-                ]
-                self.collection.add(
-                    ids=ids,
-                    documents=documents,
-                    metadatas=metadatas,
-                )
-                logger.info("[KB] Default knowledge seeding complete.")
+                return
+
+            # Fetch all metadata
+            all_data = self.collection.get(include=["metadatas"])
+            metadatas = all_data.get("metadatas", [])
+            for meta in metadatas:
+                if not meta:
+                    continue
+                filename = meta.get("filename", "unknown_document")
+                uploaded_at = meta.get("uploaded_at", datetime.now().isoformat())
+                if filename not in self._doc_registry:
+                    self._doc_registry[filename] = {
+                        "filename": filename,
+                        "chunk_count": 0,
+                        "uploaded_at": uploaded_at,
+                    }
+                self._doc_registry[filename]["chunk_count"] += 1
+            logger.info(f"[KB] Loaded {len(self._doc_registry)} existing documents ({count} chunks) from ChromaDB")
         except Exception as e:
-            logger.warning(f"[KB] Failed to seed default knowledge: {e}")
+            logger.warning(f"[KB] Failed to sync registry from ChromaDB: {e}")
+
+    def add_document_chunks(self, filename: str, chunks: list[dict]) -> int:
+        """
+        Ingest parsed document chunks into the knowledge base.
+        Replaces any existing chunks for the same filename.
+        """
+        if not chunks:
+            return 0
+
+        with self.lock:
+            # If document already exists, remove older chunks first
+            self.delete_document(filename)
+
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ids = [chunk["id"] for chunk in chunks]
+            documents = [chunk["content"] for chunk in chunks]
+            metadatas = [
+                {
+                    "filename": filename,
+                    "title": chunk.get("title", f"{filename} (Section {i+1})"),
+                    "intent": chunk.get("intent", "general_inquiry"),
+                    "chunk_index": chunk.get("chunk_index", i + 1),
+                    "uploaded_at": now_str,
+                }
+                for i, chunk in enumerate(chunks)
+            ]
+
+            if self.collection:
+                try:
+                    self.collection.add(
+                        ids=ids,
+                        documents=documents,
+                        metadatas=metadatas,
+                    )
+                except Exception as e:
+                    logger.error(f"[KB] ChromaDB add error: {e}")
+
+            # Keep in-memory copy synced
+            for chunk, meta in zip(chunks, metadatas):
+                self._in_memory_docs.append({
+                    "id": chunk["id"],
+                    "filename": filename,
+                    "title": meta["title"],
+                    "intent": meta["intent"],
+                    "content": chunk["content"],
+                    "uploaded_at": now_str,
+                })
+
+            self._doc_registry[filename] = {
+                "filename": filename,
+                "chunk_count": len(chunks),
+                "uploaded_at": now_str,
+            }
+
+            logger.info(f"[KB] Ingested {len(chunks)} chunks for '{filename}'")
+            return len(chunks)
+
+    def delete_document(self, filename: str) -> int:
+        """Remove all chunks associated with a specific document filename."""
+        with self.lock:
+            deleted_count = 0
+            if self.collection:
+                try:
+                    existing = self.collection.get(where={"filename": filename})
+                    ids_to_delete = existing.get("ids", [])
+                    if ids_to_delete:
+                        self.collection.delete(ids=ids_to_delete)
+                        deleted_count = len(ids_to_delete)
+                except Exception as e:
+                    logger.warning(f"[KB] ChromaDB delete error for {filename}: {e}")
+
+            # Remove from in-memory
+            before_len = len(self._in_memory_docs)
+            self._in_memory_docs = [d for d in self._in_memory_docs if d.get("filename") != filename]
+            deleted_count = max(deleted_count, before_len - len(self._in_memory_docs))
+
+            self._doc_registry.pop(filename, None)
+            logger.info(f"[KB] Deleted document '{filename}' ({deleted_count} chunks removed)")
+            return deleted_count
+
+    def clear_all(self) -> int:
+        """Wipe all documents and chunks from the knowledge base."""
+        with self.lock:
+            total_chunks = 0
+            if self.collection:
+                try:
+                    total_chunks = self.collection.count()
+                    # Recreate empty collection
+                    if self.client:
+                        self.client.delete_collection(self.collection_name)
+                        self.collection = self.client.get_or_create_collection(
+                            name=self.collection_name,
+                            metadata={"hnsw:space": "cosine"},
+                        )
+                except Exception as e:
+                    logger.warning(f"[KB] Failed to reset ChromaDB collection: {e}")
+
+            total_chunks = max(total_chunks, len(self._in_memory_docs))
+            self._in_memory_docs = []
+            self._doc_registry = {}
+            logger.info(f"[KB] Cleared knowledge base completely ({total_chunks} chunks deleted)")
+            return total_chunks
+
+    def list_documents(self) -> list[dict]:
+        """Return a list of all indexed documents and their chunk counts."""
+        with self.lock:
+            return list(self._doc_registry.values())
+
+    def get_status(self) -> dict:
+        """Get high-level summary of knowledge base health and contents."""
+        with self.lock:
+            chroma_chunk_count = 0
+            if self.collection:
+                try:
+                    chroma_chunk_count = self.collection.count()
+                except Exception:
+                    chroma_chunk_count = 0
+
+            return {
+                "total_documents": len(self._doc_registry),
+                "total_chunks": chroma_chunk_count if self.collection else len(self._in_memory_docs),
+                "documents": list(self._doc_registry.values()),
+                "chroma_connected": self.collection is not None,
+            }
+
+    def get_all_chunks(self, filename: Optional[str] = None) -> list[dict]:
+        """Fetch all indexed chunks, optionally filtered by filename."""
+        with self.lock:
+            if self.collection:
+                try:
+                    kwargs = {"include": ["documents", "metadatas"]}
+                    if filename:
+                        kwargs["where"] = {"filename": filename}
+                    res = self.collection.get(**kwargs)
+                    ids = res.get("ids", [])
+                    docs = res.get("documents", [])
+                    metas = res.get("metadatas", [])
+                    return [
+                        {
+                            "id": cid,
+                            "content": doc,
+                            "title": meta.get("title", "Policy Section"),
+                            "filename": meta.get("filename", "document"),
+                            "intent": meta.get("intent", "general_inquiry"),
+                        }
+                        for cid, doc, meta in zip(ids, docs, metas)
+                    ]
+                except Exception as e:
+                    logger.warning(f"[KB] Error getting chunks from ChromaDB: {e}")
+
+            # Fallback
+            docs = self._in_memory_docs
+            if filename:
+                docs = [d for d in docs if d.get("filename") == filename]
+            return docs
 
     def query_knowledge(
         self,
@@ -174,16 +262,26 @@ class AuthorKnowledgeBase:
         """
         Query the knowledge base for relevant policy chunks.
         Optionally filters by intent (general_inquiry, publishing_status, distribution).
-        Falls back to in-memory search if ChromaDB is unavailable.
+        Falls back to in-memory search or returns empty list if no docs are indexed.
         """
         with self.lock:
+            # Check if KB is empty
+            if self.collection:
+                try:
+                    if self.collection.count() == 0:
+                        return []
+                except Exception:
+                    pass
+            elif not self._in_memory_docs:
+                return []
+
             # 1. Attempt ChromaDB Query
             if self.collection:
                 try:
                     # Try intent-filtered query first if provided
                     query_kwargs = {
                         "query_texts": [query_text],
-                        "n_results": top_k,
+                        "n_results": min(top_k, self.collection.count()),
                     }
                     if intent:
                         query_kwargs["where"] = {"intent": intent}
@@ -208,6 +306,7 @@ class AuthorKnowledgeBase:
                             retrieved.append({
                                 "title": meta.get("title", "Notion Press Guide"),
                                 "intent": meta.get("intent", "general_inquiry"),
+                                "filename": meta.get("filename", "Policy Document"),
                                 "content": doc,
                                 "similarity_score": round(1.0 - dist, 3) if dist is not None else 1.0,
                             })
@@ -225,11 +324,14 @@ class AuthorKnowledgeBase:
         top_k: int = 2,
     ) -> list[dict]:
         """Simple keyword matching fallback for offline/test resilience."""
+        if not self._in_memory_docs:
+            return []
+
         query_lower = query_text.lower()
         candidates = self._in_memory_docs
 
         if intent:
-            filtered = [d for d in candidates if d["intent"] == intent]
+            filtered = [d for d in candidates if d.get("intent") == intent]
             if filtered:
                 candidates = filtered
 
@@ -239,20 +341,26 @@ class AuthorKnowledgeBase:
             for word in query_lower.split():
                 if len(word) <= 2:
                     continue
-                if word in doc["title"].lower():
+                if word in doc.get("title", "").lower():
                     score += 3
-                if word in doc["content"].lower():
+                if word in doc.get("content", "").lower():
                     score += 1
-            scored.append((score, doc))
+            if score > 0:
+                scored.append((score, doc))
 
-        scored.sort(key=lambda x: x[0], reverse=True)
-        top_docs = [doc for _, doc in scored[:top_k]]
+        # If no score match, return top candidates
+        if not scored and candidates:
+            top_docs = candidates[:top_k]
+        else:
+            scored.sort(key=lambda x: x[0], reverse=True)
+            top_docs = [doc for _, doc in scored[:top_k]]
 
         return [
             {
-                "title": d["title"],
-                "intent": d["intent"],
-                "content": d["content"],
+                "title": d.get("title", "Policy Section"),
+                "intent": d.get("intent", "general_inquiry"),
+                "filename": d.get("filename", "Policy Document"),
+                "content": d.get("content", ""),
                 "similarity_score": 0.85,
             }
             for d in top_docs

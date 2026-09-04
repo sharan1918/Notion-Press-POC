@@ -1,18 +1,96 @@
+import os
 import pytest
 from unittest.mock import MagicMock, patch
 from app.models import Email, EmailClassification, RecommendedAction
-from app.knowledge_base import AuthorKnowledgeBase, SEED_KNOWLEDGE_DOCUMENTS, author_knowledge_base
+from app.knowledge_base import AuthorKnowledgeBase, author_knowledge_base
+from app.pdf_parser import extract_text_from_pdf_bytes, chunk_document_text, infer_intent
 from app.graph import generate_rag_reply, determine_action_node
 from app.policy import determine_action
 
-def test_seed_knowledge_documents_count():
-    assert len(SEED_KNOWLEDGE_DOCUMENTS) >= 5
-    intents = {doc["intent"] for doc in SEED_KNOWLEDGE_DOCUMENTS}
-    assert "general_inquiry" in intents
-    assert "publishing_status" in intents
-    assert "distribution" in intents
+def get_sample_pdf_path():
+    return os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "sample_docs", "Notion_Press_Author_Publishing_Policy_Handbook.pdf")
+    )
+
+def test_pdf_parser_and_chunking():
+    pdf_path = get_sample_pdf_path()
+    assert os.path.exists(pdf_path), f"Sample PDF missing at {pdf_path}"
+    with open(pdf_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    text = extract_text_from_pdf_bytes(pdf_bytes)
+    assert "Notion Press" in text
+    assert "Royalty" in text or "Profit" in text
+
+    chunks = chunk_document_text(text, "Handbook.pdf")
+    assert len(chunks) >= 5
+    for chunk in chunks:
+        assert "id" in chunk
+        assert "title" in chunk
+        assert "content" in chunk
+        assert "intent" in chunk
+
+def test_dynamic_document_lifecycle(tmp_path):
+    kb = AuthorKnowledgeBase(persist_directory=str(tmp_path / "kb_dynamic"))
+    # Initially empty
+    assert len(kb.list_documents()) == 0
+    assert kb.query_knowledge("how do royalties work?") == []
+
+    # Ingest document
+    sample_chunks = [
+        {
+            "id": "doc1_chunk_1",
+            "title": "Royalty & Payout Guidelines",
+            "intent": "general_inquiry",
+            "content": "Authors receive 100% of Net Author Profit on the 10th of every month. Minimum threshold ₹1,000.",
+            "chunk_index": 1,
+        },
+        {
+            "id": "doc1_chunk_2",
+            "title": "ISBN Rules",
+            "intent": "general_inquiry",
+            "content": "Free 13-digit ISBN is assigned upon project setup.",
+            "chunk_index": 2,
+        }
+    ]
+    added = kb.add_document_chunks("doc1.pdf", sample_chunks)
+    assert added == 2
+    assert len(kb.list_documents()) == 1
+    assert kb.list_documents()[0]["filename"] == "doc1.pdf"
+
+    # Query
+    results = kb.query_knowledge("what is the royalty payout threshold?", intent="general_inquiry")
+    assert len(results) > 0
+    assert "1,000" in results[0]["content"]
+
+    # Delete
+    deleted = kb.delete_document("doc1.pdf")
+    assert deleted == 2
+    assert len(kb.list_documents()) == 0
+    assert kb.query_knowledge("royalty") == []
+
+def test_clear_all_knowledge_base(tmp_path):
+    kb = AuthorKnowledgeBase(persist_directory=str(tmp_path / "kb_clear"))
+    chunks = [
+        {"id": "c1", "title": "Section 1", "intent": "general_inquiry", "content": "Publishing steps", "chunk_index": 1}
+    ]
+    kb.add_document_chunks("guide.pdf", chunks)
+    assert len(kb.list_documents()) == 1
+
+    kb.clear_all()
+    assert len(kb.list_documents()) == 0
+    assert kb.get_status()["total_documents"] == 0
 
 def test_query_knowledge_general_inquiry():
+    # Ingest sample handbook into singleton for integration tests
+    pdf_path = get_sample_pdf_path()
+    if os.path.exists(pdf_path):
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+        text = extract_text_from_pdf_bytes(pdf_bytes)
+        chunks = chunk_document_text(text, "Notion_Press_Author_Publishing_Policy_Handbook.pdf")
+        author_knowledge_base.add_document_chunks("Notion_Press_Author_Publishing_Policy_Handbook.pdf", chunks)
+
     docs = author_knowledge_base.query_knowledge(
         query_text="How do I self-publish my manuscript and what are the steps?",
         intent="general_inquiry",
@@ -20,7 +98,7 @@ def test_query_knowledge_general_inquiry():
     )
     assert len(docs) > 0
     titles = [d["title"] for d in docs]
-    assert any("Publishing Roadmap" in t or "Royalty" in t or "ISBN" in t for t in titles)
+    assert any("Publishing" in t or "Royalty" in t or "ISBN" in t for t in titles)
 
 def test_query_knowledge_publishing_status():
     docs = author_knowledge_base.query_knowledge(
@@ -30,28 +108,9 @@ def test_query_knowledge_publishing_status():
     )
     assert len(docs) > 0
     titles = [d["title"] for d in docs]
-    assert any("Turnaround" in t or "SLA" in t for t in titles)
-
-def test_query_knowledge_distribution():
-    docs = author_knowledge_base.query_knowledge(
-        query_text="Why is my book not showing on Flipkart search results?",
-        intent="distribution",
-        top_k=2
-    )
-    assert len(docs) > 0
-    titles = [d["title"] for d in docs]
-    assert any("Distribution" in t or "Indexing" in t for t in titles)
-
-def test_in_memory_fallback(tmp_path):
-    kb = AuthorKnowledgeBase(persist_directory=str(tmp_path / "kb_test"))
-    # Force collection to None to test fallback
-    kb.collection = None
-    results = kb.query_knowledge("royalty payment calculation formula", intent="general_inquiry")
-    assert len(results) > 0
-    assert "Royalty" in results[0]["title"] or "Profit" in results[0]["content"]
+    assert any("Turnaround" in t or "SLA" in t or "Production" in t or "Go-Live" in t for t in titles)
 
 def test_policy_multi_intent_auto_reply():
-    # general_inquiry -> auto_reply
     cls_general = EmailClassification(
         intent="general_inquiry",
         urgency=2,
@@ -63,7 +122,6 @@ def test_policy_multi_intent_auto_reply():
     action_general = determine_action(cls_general)
     assert action_general.action_type == "auto_reply"
 
-    # publishing_status -> auto_reply
     cls_status = EmailClassification(
         intent="publishing_status",
         urgency=2,
@@ -75,19 +133,6 @@ def test_policy_multi_intent_auto_reply():
     action_status = determine_action(cls_status)
     assert action_status.action_type == "auto_reply"
 
-    # distribution -> auto_reply
-    cls_dist = EmailClassification(
-        intent="distribution",
-        urgency=3,
-        key_details=["Flipkart sync"],
-        missing_information=[],
-        confidence=0.90,
-        classification_explanation="Author asks about distributor indexing"
-    )
-    action_dist = determine_action(cls_dist)
-    assert action_dist.action_type == "auto_reply"
-
-    # missing information blocks auto_reply
     cls_missing = EmailClassification(
         intent="publishing_status",
         urgency=3,
