@@ -20,47 +20,68 @@ export default function HumanApproval({ state, onApprove, onReject, onCorrect }:
   const [notes, setNotes] = useState("");
 
   return (
-    <div className="mt-6 p-6 bg-amber-500/10 border border-amber-500/30 rounded-lg animate-fadeIn">
-      <div className="flex items-center gap-3 mb-4">
-        <span className="text-2xl">⚠️</span>
-        <h3 className="text-lg font-semibold text-amber-500">Pending Human Approval</h3>
+    <div className="mt-6 p-5 sm:p-6 bg-card border border-amber-300/80 dark:border-amber-500/30 rounded-xl shadow-xs animate-fadeIn">
+      <div className="flex items-center gap-2.5 mb-2.5">
+        <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/30 flex items-center justify-center text-amber-800 dark:text-amber-400 shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <h3 className="text-sm sm:text-base font-bold text-amber-900 dark:text-amber-300">Pending Human Approval</h3>
       </div>
       
-      <p className="text-sm mb-6 text-muted-foreground">
+      <p className="text-xs sm:text-sm mb-5 text-muted-foreground leading-relaxed">
         The AI recommended an action that requires human review before execution.
       </p>
 
       {!showCorrection ? (
-        <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          {/* Approve Button - Deep Matte Emerald */}
           <button 
             onClick={onApprove}
-            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded text-xs sm:text-sm font-medium transition-colors cursor-pointer"
+            className="w-full bg-emerald-800 hover:bg-emerald-900 active:bg-emerald-950 text-white py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
           >
-            ✅ Approve & Execute
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span>Approve &amp; Execute</span>
           </button>
+
+          {/* Reject Button - Deep Matte Rose */}
           <button 
             onClick={onReject}
-            className="flex-1 bg-destructive hover:bg-destructive/80 text-white py-2 px-3 rounded text-xs sm:text-sm font-medium transition-colors cursor-pointer"
+            className="w-full bg-rose-800 hover:bg-rose-900 active:bg-rose-950 text-white py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
           >
-            ❌ Reject (End)
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            <span>Reject (End)</span>
           </button>
+
+          {/* Correct AI Button - Deep Matte Amber */}
           <button 
             onClick={() => setShowCorrection(true)}
-            className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2 px-3 rounded text-xs sm:text-sm font-medium transition-colors cursor-pointer"
+            className="w-full bg-amber-800 hover:bg-amber-900 active:bg-amber-950 text-white py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
           >
-            ✏️ Correct AI
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+            </svg>
+            <span>Correct AI</span>
           </button>
         </div>
       ) : (
-        <div className="space-y-4 pt-4 border-t border-amber-500/20">
-          <h4 className="font-medium text-amber-500">Correct the Classification</h4>
+        <div className="space-y-4 pt-4 border-t border-border">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-400">Correct the Classification</h4>
           
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Correct Intent</label>
             <select 
               value={selectedIntent}
               onChange={(e) => setSelectedIntent(e.target.value)}
-              className="w-full bg-background border border-border rounded p-2 text-sm focus:border-amber-500 outline-none"
+              className="w-full bg-background border border-border rounded-lg p-2 text-xs sm:text-sm text-foreground focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 outline-none"
             >
               {INTENTS.map(intent => (
                 <option key={intent} value={intent}>{intent.replace('_', ' ')}</option>
@@ -73,22 +94,22 @@ export default function HumanApproval({ state, onApprove, onReject, onCorrect }:
             <textarea 
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-background border border-border rounded p-2 text-sm focus:border-amber-500 outline-none h-20 resize-none"
+              className="w-full bg-background border border-border rounded-lg p-2.5 text-xs sm:text-sm text-foreground focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 outline-none h-20 resize-none"
               placeholder="e.g. The email mentioned an ISBN, so it's a metadata issue, not a general inquiry."
             />
           </div>
           
-          <div className="flex gap-3">
+          <div className="flex gap-2.5">
             <button 
               onClick={() => onCorrect(selectedIntent, notes)}
               disabled={!notes.trim()}
-              className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50"
+              className="bg-amber-800 hover:bg-amber-900 text-white px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
             >
-              Submit & Re-evaluate
+              Submit &amp; Re-evaluate
             </button>
             <button 
               onClick={() => setShowCorrection(false)}
-              className="bg-secondary hover:bg-secondary/80 px-4 py-2 rounded text-sm font-medium transition-colors"
+              className="bg-secondary hover:bg-muted text-secondary-foreground border border-border px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors cursor-pointer"
             >
               Cancel
             </button>

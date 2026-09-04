@@ -154,9 +154,9 @@ export default function PipelineView({ state, isStreaming = false }: Props) {
                 </p>
                 {step.label && (
                   <span className={`text-[10px] uppercase font-mono font-bold mt-1 inline-block px-1.5 py-0.5 rounded border ${
-                    state?.missing_info_block ? 'bg-amber-500/10 text-amber-500 border-amber-500/30' :
-                    state?.approval_required ? 'bg-amber-500/10 text-amber-500 border-amber-500/30' :
-                    'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                    state?.missing_info_block ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30' :
+                    state?.approval_required ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30' :
+                    'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                   }`}>
                     {step.label}
                   </span>

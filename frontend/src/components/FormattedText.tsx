@@ -3,6 +3,7 @@ import React from "react";
 interface Props {
   content: string;
   className?: string;
+  inline?: boolean;
 }
 
 /**
@@ -12,7 +13,7 @@ interface Props {
  * - `code`
  * - [text](url)
  */
-function renderInline(text: string): React.ReactNode[] {
+export function renderInline(text: string): React.ReactNode[] {
   const inlineRegex = /(\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*([^*]+)\*|_([^_]+)_)/g;
 
   const elements: React.ReactNode[] = [];
@@ -85,8 +86,12 @@ interface Block {
   startNumber?: number;
 }
 
-export default function FormattedText({ content, className = "" }: Props) {
+export default function FormattedText({ content, className = "", inline = false }: Props) {
   if (!content) return null;
+
+  if (inline) {
+    return <span className={className}>{renderInline(content)}</span>;
+  }
 
   const rawLines = content.split(/\r?\n/);
   const blocks: Block[] = [];
