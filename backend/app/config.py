@@ -79,9 +79,13 @@ SPAM_HEURISTICS_CONFIG = SpamHeuristics()
 # Only near-duplicate emails (>= 0.90) reuse cached classifications.
 INTENT_CACHE_SIMILARITY_THRESHOLD = 0.90
 
-# ── Batch Triage ─────────────────────────────────────────────────────────────
-# Delay between sequential LLM calls in batch triage (seconds).
-TRIAGE_DELAY_SECONDS = 3
+# ── Batch Triage Concurrency ────────────────────────────────────────────────
+# Number of emails processed in parallel concurrently.
+# Concurrency of 3-5 finishes all 10 inbox emails in ~2-3s while staying under rate limits.
+TRIAGE_CONCURRENCY = int(os.getenv("TRIAGE_CONCURRENCY", "3"))
+TRIAGE_DELAY_SECONDS = float(os.getenv("TRIAGE_DELAY_SECONDS", "0.2"))
+
+
 
 # ── Author Email Simulation & Ingestion Security ─────────────────────────────
 API_AUTH_KEY = os.getenv("API_AUTH_KEY", "notion-poc-author-key-2026")
