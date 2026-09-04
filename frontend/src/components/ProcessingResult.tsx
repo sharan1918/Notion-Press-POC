@@ -1,8 +1,22 @@
+import { useState } from "react";
 import type { ProcessingResponse } from "../types";
+import FormattedText from "./FormattedText";
 
 export default function ProcessingResult({ state }: { state: ProcessingResponse["state"] }) {
+  const [copied, setCopied] = useState(false);
   if (!state.classification) return null;
   const { classification, recommended_action, guardrail_result } = state;
+
+  const handleCopyDraft = async () => {
+    if (!state.draft_response) return;
+    try {
+      await navigator.clipboard.writeText(state.draft_response);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy draft:", err);
+    }
+  };
 
   return (
     <div className="space-y-5 mt-6 animate-fadeIn">
@@ -60,9 +74,9 @@ export default function ProcessingResult({ state }: { state: ProcessingResponse[
         <p className="text-[11px] font-mono text-primary uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
           <span>🤖</span> AI Decision Explanation
         </p>
-        <p className="text-xs text-foreground/90 leading-relaxed">
-          {classification.classification_explanation}
-        </p>
+        <div className="text-xs text-foreground/90 leading-relaxed">
+          <FormattedText content={classification.classification_explanation} />
+        </div>
       </div>
 
       {/* Uploaded Attachments */}
@@ -89,7 +103,7 @@ export default function ProcessingResult({ state }: { state: ProcessingResponse[
             {classification.key_details.map((detail, i) => (
               <li key={i} className="flex items-start gap-2">
                 <span className="text-primary font-bold">▪</span>
-                <span>{detail}</span>
+                <span className="flex-1"><FormattedText content={detail} /></span>
               </li>
             ))}
             {classification.key_details.length === 0 && (
@@ -113,7 +127,7 @@ export default function ProcessingResult({ state }: { state: ProcessingResponse[
             {classification.missing_information.map((info, i) => (
               <li key={i} className="flex items-start gap-2 text-amber-500">
                 <span className="font-bold">⚠️</span>
-                <span>{info}</span>
+                <span><FormattedText content={info} /></span>
               </li>
             ))}
             {classification.missing_information.length === 0 && (
@@ -157,6 +171,44 @@ export default function ProcessingResult({ state }: { state: ProcessingResponse[
           )}
         </div>
       )}
+
+      {/* RAG Knowledge Grounded Auto-Reply */}
+      {state.draft_response && (
+        <div className="p-5 bg-card rounded-xl border border-border/80 shadow-sm relative overflow-hidden space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-border/50">
+            <div className="flex items-center gap-2">
+              <span className="text-base">✨</span>
+              <div>
+                <p className="text-xs font-mono font-bold text-primary uppercase tracking-wider">
+                  RAG Grounded Auto-Reply Draft
+                </p>
+                {state.email && (
+                  <p className="text-[11px] text-muted-foreground">
+                    To: <span className="font-medium text-foreground">{state.email.sender_name}</span> &lt;{state.email.sender}&gt;
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopyDraft}
+                className="px-2.5 py-1 rounded-md bg-secondary/80 hover:bg-secondary border border-border text-foreground text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                title="Copy formatted reply draft to clipboard"
+              >
+                <span>{copied ? "✓" : "📋"}</span>
+                <span>{copied ? "Copied!" : "Copy Draft"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Clean Email Draft Box */}
+          <div className="p-4 sm:p-5 bg-background border border-border/80 rounded-lg text-[13px] sm:text-sm text-foreground leading-relaxed font-sans shadow-2xs">
+            <FormattedText content={state.draft_response} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

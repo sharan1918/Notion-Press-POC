@@ -1,23 +1,26 @@
 from app.models import EmailClassification, RecommendedAction, GuardrailResult
 from app.config import HIGH_IMPACT_ACTIONS, URGENCY_APPROVAL_THRESHOLD, CONFIDENCE_APPROVAL_THRESHOLD, INTENT_TO_TEAM
 
+RAG_AUTO_REPLY_INTENTS = {"general_inquiry", "publishing_status", "distribution"}
+
 def determine_action(classification: EmailClassification) -> RecommendedAction:
     intent = classification.intent
     
     if intent == "spam":
         return RecommendedAction(action_type="archive", description="Auto-archive spam email")
-    elif intent == "general_inquiry":
-        return RecommendedAction(action_type="auto_reply", description="Send FAQ auto-reply")
+    elif classification.missing_information:
+        return RecommendedAction(action_type="request_more_info", description="Request missing information from author")
+    elif intent in RAG_AUTO_REPLY_INTENTS:
+        intent_label = intent.replace('_', ' ')
+        return RecommendedAction(action_type="auto_reply", description=f"Send RAG auto-reply ({intent_label})")
     elif intent == "complaint":
         target_team = INTENT_TO_TEAM.get(intent)
         return RecommendedAction(action_type="escalate", description=f"Escalate to {target_team}", target_team=target_team)
     elif intent == "isbn_metadata":
         target_team = INTENT_TO_TEAM.get(intent)
         return RecommendedAction(action_type="modify_metadata", description="Modify ISBN/Metadata", target_team=target_team)
-    elif classification.missing_information:
-        return RecommendedAction(action_type="request_more_info", description="Request missing information from author")
     else:
-        # For royalty_payment, publishing_status, printing_issue, cover_design, distribution
+        # For royalty_payment, printing_issue, cover_design
         target_team = INTENT_TO_TEAM.get(intent)
         return RecommendedAction(action_type="route_to_team", description=f"Route to {target_team} team", target_team=target_team)
 

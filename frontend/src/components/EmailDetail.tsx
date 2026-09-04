@@ -2,6 +2,7 @@ import type { Email, ProcessingResponse } from "../types";
 import ProcessingResult from "./ProcessingResult";
 import HumanApproval from "./HumanApproval";
 import MissingInfoForm from "./MissingInfoForm";
+import FormattedText from "./FormattedText";
 
 interface Props {
   email: Email;
@@ -68,14 +69,27 @@ export default function EmailDetail({
             </button>
           )}
 
-          <button className="hover:text-foreground flex items-center gap-1 cursor-pointer">
-            <span>↩</span> <span className="hidden sm:inline">Reply</span>
+          <button className="hover:text-foreground flex items-center gap-1.5 cursor-pointer transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <polyline points="9 17 4 12 9 7" />
+              <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+            </svg>
+            <span className="hidden sm:inline">Reply</span>
           </button>
-          <button className="hover:text-foreground hidden sm:flex items-center gap-1 cursor-pointer">
-            <span>↩↩</span> Reply all
+          <button className="hover:text-foreground hidden sm:flex items-center gap-1.5 cursor-pointer transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <polyline points="7 17 2 12 7 7" />
+              <polyline points="12 17 7 12 12 7" />
+              <path d="M22 18v-2a4 4 0 0 0-4-4H7" />
+            </svg>
+            <span>Reply all</span>
           </button>
-          <button className="hover:text-foreground hidden sm:flex items-center gap-1 cursor-pointer">
-            <span>↪</span> Forward
+          <button className="hover:text-foreground hidden sm:flex items-center gap-1.5 cursor-pointer transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <polyline points="15 17 20 12 15 7" />
+              <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+            </svg>
+            <span>Forward</span>
           </button>
         </div>
 
@@ -162,17 +176,33 @@ export default function EmailDetail({
         )}
 
         {/* Email Body Text */}
-        <div className="text-xs md:text-sm text-foreground leading-relaxed whitespace-pre-wrap font-sans pt-2 border-t border-border/40">
-          {email.body}
+        <div className="text-xs md:text-sm text-foreground leading-relaxed font-sans pt-2 border-t border-border/40">
+          <FormattedText content={email.body} />
         </div>
 
-        {/* Bottom Quick Reply Buttons */}
-        <div className="flex items-center gap-3 pt-4 border-t border-border/40">
-          <button className="px-4 py-1.5 rounded bg-secondary hover:bg-secondary/80 border border-border text-xs font-medium text-foreground flex items-center gap-1.5">
-            <span>↩</span> Reply
+        {/* Bottom Quick Action Buttons */}
+        <div className="flex items-center gap-2.5 pt-4 border-t border-border/40">
+          <button className="px-3.5 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 border border-border text-xs font-medium text-foreground flex items-center gap-1.5 transition-colors cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <polyline points="9 17 4 12 9 7" />
+              <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+            </svg>
+            <span>Reply</span>
           </button>
-          <button className="px-4 py-1.5 rounded bg-secondary hover:bg-secondary/80 border border-border text-xs font-medium text-foreground flex items-center gap-1.5">
-            <span>↪</span> Forward
+          <button className="px-3.5 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 border border-border text-xs font-medium text-foreground flex items-center gap-1.5 transition-colors cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <polyline points="7 17 2 12 7 7" />
+              <polyline points="12 17 7 12 12 7" />
+              <path d="M22 18v-2a4 4 0 0 0-4-4H7" />
+            </svg>
+            <span>Reply all</span>
+          </button>
+          <button className="px-3.5 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 border border-border text-xs font-medium text-foreground flex items-center gap-1.5 transition-colors cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <polyline points="15 17 20 12 15 7" />
+              <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+            </svg>
+            <span>Forward</span>
           </button>
         </div>
 

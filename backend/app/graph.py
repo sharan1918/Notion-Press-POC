@@ -14,6 +14,7 @@ from app.prompts import build_prompt
 from app.feedback_store import feedback_store
 from app.intake_filter import check_spam
 from app.intent_cache import intent_cache
+from app.knowledge_base import author_knowledge_base
 
 load_dotenv(override=True)
 
@@ -108,6 +109,8 @@ def ingest_email(state: EmailProcessingState) -> EmailProcessingState:
     state["approval_required"] = False
     state["missing_info_block"] = False
     state["human_decision"] = None
+    state["draft_response"] = None
+    state["knowledge_sources"] = None
     
     email = state["email"]
     log(state, f"Email received from {email.sender}: {email.subject}")
@@ -214,6 +217,82 @@ def route_after_classify(state: EmailProcessingState) -> str:
         return "fetch_and_classify" # Loop back for retry
     return "determine_action"
 
+def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
+    """Retrieve relevant Notion Press policies from ChromaDB and generate a grounded draft auto-reply."""
+    email = state["email"]
+    classification = state.get("classification")
+    intent = classification.intent if classification else "general_inquiry"
+
+    query_text = f"{email.subject}\n{email.body}"
+    retrieved_docs = author_knowledge_base.query_knowledge(query_text=query_text, intent=intent, top_k=2)
+
+    if not retrieved_docs:
+        log(state, "[RAG] No matching policy chunks found in knowledge base.")
+        return state
+
+    sources = [doc["title"] for doc in retrieved_docs]
+    state["knowledge_sources"] = sources
+    log(state, f"📚 [RAG] Retrieved {len(retrieved_docs)} policy documents: {', '.join(sources)}")
+
+    context_str = "\n\n".join([f"### {doc['title']}\n{doc['content']}" for doc in retrieved_docs])
+
+    prompt = (
+        f"You are a professional, friendly, and helpful author support representative at Notion Press.\n"
+        f"An author has emailed support with an inquiry:\n"
+        f"Author Name: {email.sender_name}\n"
+        f"Author Email: {email.sender}\n"
+        f"Subject: {email.subject}\n"
+        f"Message Body:\n{email.body}\n\n"
+        f"Use ONLY the verified Notion Press policy documents below to formulate your response:\n"
+        f"---------------------\n"
+        f"{context_str}\n"
+        f"---------------------\n\n"
+        f"Instructions:\n"
+        f"1. Greet the author warmly using their first name ({email.sender_name.split()[0] if email.sender_name else 'Author'}).\n"
+        f"2. Provide a clear, courteous, and direct answer based strictly on the policy documents above.\n"
+        f"3. Quote exact turnaround days, SLAs, or formulas as stated in the policy.\n"
+        f"4. Maintain a reassuring, supportive tone.\n"
+        f"5. End with:\n'Warm regards,\nNotion Press Author Support Team'.\n"
+        f"6. Do not fabricate unverified promises or tracking links."
+    )
+
+    gemini_llm, groq_llm = get_llms()
+    draft = None
+    provider_used = None
+
+    if gemini_llm:
+        try:
+            res = gemini_llm.invoke(prompt)
+            draft = res.content if hasattr(res, "content") else str(res)
+            provider_used = "Gemini 3.5 Flash"
+        except Exception as e:
+            logger.warning(f"Gemini failed for RAG reply generation: {e}")
+
+    if not draft and groq_llm:
+        try:
+            res = groq_llm.invoke(prompt)
+            draft = res.content if hasattr(res, "content") else str(res)
+            provider_used = "Groq (GPT-OSS-120B)"
+        except Exception as e:
+            logger.warning(f"Groq failed for RAG reply generation: {e}")
+
+    if draft:
+        state["draft_response"] = draft.strip()
+        log(state, f"✨ [RAG] Grounded auto-reply generated via {provider_used}")
+    else:
+        # Fallback template if LLM is unavailable
+        fallback_summary = retrieved_docs[0]["content"].split("\n")[0]
+        state["draft_response"] = (
+            f"Dear {email.sender_name},\n\n"
+            f"Thank you for reaching out to Notion Press Support regarding '{email.subject}'.\n\n"
+            f"Based on our official guidelines: {fallback_summary}\n\n"
+            f"Please let us know if you have any further questions.\n\n"
+            f"Warm regards,\nNotion Press Author Support Team"
+        )
+        log(state, "✨ [RAG] Standard auto-reply drafted from knowledge base")
+
+    return state
+
 def determine_action_node(state: EmailProcessingState) -> EmailProcessingState:
     classification = state["classification"]
     
@@ -225,6 +304,10 @@ def determine_action_node(state: EmailProcessingState) -> EmailProcessingState:
     state["approval_required"] = guardrail.approval_required
     state["missing_info_block"] = guardrail.missing_info_block
     
+    # If action is auto_reply and not missing info, generate the RAG draft
+    if action.action_type == "auto_reply" and not guardrail.missing_info_block:
+        generate_rag_reply(state)
+
     if guardrail.missing_info_block:
         state["final_status"] = "pending_info"
     elif guardrail.approval_required:
@@ -359,6 +442,8 @@ def execute_action(state: EmailProcessingState) -> EmailProcessingState:
     # Actually perform the side-effect here based on action_type
     if action and action.action_type == "archive":
         log(state, f"Side-effect: Archiving email '{state['email'].subject}' from inbox")
+    elif action and action.action_type == "auto_reply" and state.get("draft_response"):
+        log(state, f"Side-effect: Dispatched RAG auto-reply directly to {state['email'].sender}")
     
     log(state, f"Action executed: {action.action_type if action else 'none'} - {action.description if action else 'No action'}")
     state["final_status"] = "executed"
