@@ -1,10 +1,14 @@
 import re
 import io
+import os
 import logging
 from typing import Optional
 from pypdf import PdfReader
 
 logger = logging.getLogger(__name__)
+
+MAX_PDF_PAGES = 200
+MAX_EXTRACTED_TEXT_LENGTH = 500_000
 
 INTENT_KEYWORDS = {
     "publishing_status": ["timeline", "sla", "turnaround", "go-live", "proof", "spooling", "hardcover", "ebooks", "status", "days"],
@@ -27,14 +31,25 @@ def infer_intent(text: str, title: str = "") -> str:
     return "general_inquiry"
 
 def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
-    """Extract full plain text from PDF bytes using pypdf."""
+    """Extract full plain text from PDF bytes using pypdf with size safety controls."""
     reader = PdfReader(io.BytesIO(pdf_bytes))
     pages_text = []
+    total_length = 0
+    
     for i, page in enumerate(reader.pages):
+        if i >= MAX_PDF_PAGES:
+            logger.warning(f"[PDF Parser] Truncating PDF at {MAX_PDF_PAGES} pages to prevent memory exhaustion.")
+            break
         text = page.extract_text() or ""
-        if text.strip():
-            pages_text.append(text.strip())
-    return "\n\n".join(pages_text)
+        stripped = text.strip()
+        if stripped:
+            pages_text.append(stripped)
+            total_length += len(stripped)
+            if total_length >= MAX_EXTRACTED_TEXT_LENGTH:
+                logger.warning(f"[PDF Parser] Text reached {MAX_EXTRACTED_TEXT_LENGTH} characters limit; truncating.")
+                break
+                
+    return "\n\n".join(pages_text)[:MAX_EXTRACTED_TEXT_LENGTH]
 
 def chunk_document_text(text: str, filename: str) -> list[dict]:
     """
@@ -66,8 +81,11 @@ def chunk_document_text(text: str, filename: str) -> list[dict]:
         if current_chunk:
             raw_sections.append("\n\n".join(current_chunk))
 
-    # Clean filename for IDs
-    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', filename)
+    # Clean filename for IDs and storage to prevent path traversal
+    clean_filename = os.path.basename(filename).strip()
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', clean_filename)
+    if not safe_name:
+        safe_name = "document"
     
     chunks = []
     for idx, section in enumerate(raw_sections):
@@ -82,7 +100,7 @@ def chunk_document_text(text: str, filename: str) -> list[dict]:
         if len(title) > 80:
             title = title[:77] + "..."
         if not title:
-            title = f"{filename} (Section {idx + 1})"
+            title = f"{clean_filename} (Section {idx + 1})"
 
         # Body is remainder of section or whole section
         content = section
@@ -90,7 +108,7 @@ def chunk_document_text(text: str, filename: str) -> list[dict]:
         
         chunks.append({
             "id": f"{safe_name}_chunk_{idx + 1}",
-            "filename": filename,
+            "filename": clean_filename,
             "title": title,
             "intent": intent,
             "content": content,

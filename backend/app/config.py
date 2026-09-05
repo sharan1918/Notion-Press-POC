@@ -1,4 +1,5 @@
 import os
+import logging
 
 # LLM Reliability
 MAX_LLM_RETRIES = 2   # 2 retry attempts after initial failure → 3 total LLM attempts
@@ -88,7 +89,20 @@ TRIAGE_DELAY_SECONDS = float(os.getenv("TRIAGE_DELAY_SECONDS", "0.2"))
 
 
 # ── Author Email Simulation & Ingestion Security ─────────────────────────────
+config_logger = logging.getLogger(__name__)
+
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+IS_PRODUCTION = ENVIRONMENT in ("production", "prod")
+
 API_AUTH_KEY = os.getenv("API_AUTH_KEY", "notion-poc-author-key-2026")
+if IS_PRODUCTION and API_AUTH_KEY == "notion-poc-author-key-2026":
+    raise RuntimeError("CRITICAL SECURITY ERROR: Default API_AUTH_KEY cannot be used in a production environment!")
+elif API_AUTH_KEY == "notion-poc-author-key-2026":
+    config_logger.warning("[SECURITY] Using default development API_AUTH_KEY for POC. Set API_AUTH_KEY in production.")
+
 MAX_CUSTOM_EMAILS = int(os.getenv("MAX_CUSTOM_EMAILS", "1000"))
 RATE_LIMIT_EMAILS_PER_MINUTE = int(os.getenv("RATE_LIMIT_EMAILS_PER_MINUTE", "15"))
+RATE_LIMIT_PROCESS_PER_MINUTE = int(os.getenv("RATE_LIMIT_PROCESS_PER_MINUTE", "25"))
+RATE_LIMIT_TRIAGE_PER_MINUTE = int(os.getenv("RATE_LIMIT_TRIAGE_PER_MINUTE", "10"))
+RATE_LIMIT_UPLOAD_PER_MINUTE = int(os.getenv("RATE_LIMIT_UPLOAD_PER_MINUTE", "15"))
 
