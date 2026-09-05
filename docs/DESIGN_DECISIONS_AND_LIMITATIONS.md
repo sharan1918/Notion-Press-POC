@@ -9,6 +9,62 @@
 
 This document provides a comprehensive analysis of the architectural design decisions, system invariants, current proof-of-concept (POC) limitations, and the production upgrade roadmap for the **Notion Press AI-Powered Email Processing System**.
 
+```mermaid
+flowchart TD
+    %% Styling Classes matching pastel boxed reference
+    classDef rootBox fill:#ff99f7,stroke:#18181b,stroke-width:3px,color:#18181b,font-weight:bold,rx:8px,ry:8px;
+    classDef lavenderBox fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#1e1b4b,font-weight:500,rx:8px,ry:8px;
+    classDef blueBox fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#1e3a8a,font-weight:500,rx:8px,ry:8px;
+    classDef amberBox fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f,font-weight:500,rx:8px,ry:8px;
+    classDef greenBox fill:#d1fae5,stroke:#059669,stroke-width:1.5px,color:#064e3b,font-weight:500,rx:8px,ry:8px;
+    classDef redBox fill:#fee2e2,stroke:#dc2626,stroke-width:1.5px,color:#7f1d1d,font-weight:500,rx:8px,ry:8px;
+    classDef purpleBox fill:#fae8ff,stroke:#a21caf,stroke-width:1.5px,color:#701a75,font-weight:500,rx:8px,ry:8px;
+    classDef cyanBox fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e,font-weight:500,rx:8px,ry:8px;
+    classDef highlightBox fill:#c7d2fe,stroke:#1e1b4b,stroke-width:2.5px,color:#0f172a,font-weight:bold,rx:8px,ry:8px;
+
+    ROOT["[ 1. INCOMING EMAIL ]<br/><b>Author Support Inquiry</b>"]:::rootBox
+    UI["[ 2. USER INTERFACE ]<br/>React 18 + Vite Mock Inbox"]:::lavenderBox
+    GATEWAY["[ 3. BACKEND GATEWAY ]<br/>FastAPI Async Engine (REST & SSE)"]:::lavenderBox
+    FILTER["[ 4. SMART INTAKE FILTER ]<br/>Fast-Path Spam & Intent Triage"]:::amberBox
+
+    SPAM["[ 6. INSTANT ARCHIVE ]<br/>$0 Token Cost / ~1ms"]:::redBox
+    CACHE["Semantic Cache Hit<br/>Cosine Sim >= 0.90 ($0)"]:::amberBox
+    AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.5 Failover"]:::blueBox
+
+    GUARD["[ 5. SAFETY RULES ]<br/>Deterministic Python Policy Engine"]:::greenBox
+
+    AUTO["Auto-Route Resolution<br/>Safe Inquiries (Urgency &lt; 4)"]:::greenBox
+    NEED_INFO["Missing Information<br/>LangGraph interrupt()"]:::purpleBox
+    HITL["Supervisor Approval<br/>High Risk / Refund &gt;= Rs. 1,000"]:::purpleBox
+
+    RESOLUTION["[ 7. RESOLUTION ]<br/>Grounded Reply & Action Execution"]:::highlightBox
+    MEMORY["[ 8. SYSTEM MEMORY ]<br/>SQLite Checkpointer & ChromaDB Vector Store"]:::cyanBox
+
+    ROOT --> UI
+    UI --> GATEWAY
+    GATEWAY --> FILTER
+
+    FILTER -->|Spam Detected| SPAM
+    FILTER -->|Repeat Inquiry| CACHE
+    FILTER -->|New Inquiry| AI
+
+    CACHE --> RESOLUTION
+    AI --> GUARD
+
+    GUARD -->|Safe Action| AUTO
+    GUARD -->|Missing Identifiers| NEED_INFO
+    GUARD -->|Sensitive / High-Impact| HITL
+
+    AUTO --> RESOLUTION
+    NEED_INFO -.->|Author Response| AI
+    HITL -->|Supervisor Approved / Corrected| RESOLUTION
+
+    RESOLUTION --> MEMORY
+```
+
+<details>
+<summary><b>View ASCII / Text Tree Diagram</b></summary>
+
 ```text
                            [ 1. INCOMING EMAIL ]
                 Raw Email Payload (Subject, Body, Attachments)
@@ -72,6 +128,7 @@ This document provides a comprehensive analysis of the architectural design deci
                      Thread State Recovery                Dynamic Few-Shot RAG
                       & HITL Resumption                   & Policy Collections
 ```
+</details>
 
 ### 🏷️ Plain-English Flow Guide (For Non-Technical Reviewers)
 
