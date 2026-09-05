@@ -8,6 +8,67 @@ This system classifies incoming author emails, recommends an appropriate action,
 
 The system uses a single AI decision component orchestrated by a stateful LangGraph workflow with deterministic policy guardrails, fast-path intake filtering, and multi-provider LLM failover.
 
+```mermaid
+flowchart TD
+    %% Styling Classes matching pastel boxed reference
+    classDef rootBox fill:#ff99f7,stroke:#18181b,stroke-width:3px,color:#18181b,font-weight:bold,rx:8px,ry:8px;
+    classDef lavenderBox fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#1e1b4b,font-weight:500,rx:8px,ry:8px;
+    classDef blueBox fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#1e3a8a,font-weight:500,rx:8px,ry:8px;
+    classDef amberBox fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f,font-weight:500,rx:8px,ry:8px;
+    classDef greenBox fill:#d1fae5,stroke:#059669,stroke-width:1.5px,color:#064e3b,font-weight:500,rx:8px,ry:8px;
+    classDef redBox fill:#fee2e2,stroke:#dc2626,stroke-width:1.5px,color:#7f1d1d,font-weight:500,rx:8px,ry:8px;
+    classDef purpleBox fill:#fae8ff,stroke:#a21caf,stroke-width:1.5px,color:#701a75,font-weight:500,rx:8px,ry:8px;
+    classDef cyanBox fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e,font-weight:500,rx:8px,ry:8px;
+    classDef highlightBox fill:#c7d2fe,stroke:#1e1b4b,stroke-width:2.5px,color:#0f172a,font-weight:bold,rx:8px,ry:8px;
+
+    ROOT["[ 1. INCOMING EMAIL ]<br/><b>Author Support Inquiry</b>"]:::rootBox
+    UI["[ 2. USER INTERFACE ]<br/>React 18 + Vite Mock Inbox"]:::lavenderBox
+    GATEWAY["[ 3. BACKEND GATEWAY ]<br/>FastAPI Async Engine (REST & SSE)"]:::lavenderBox
+    SPAM_CHECK["[ 4. FAST-PATH FILTER ]<br/>Deterministic Spam Triage"]:::amberBox
+    SPAM["[ 6. INSTANT ARCHIVE ]<br/>$0 Token Cost / ~1ms"]:::redBox
+
+    CACHE_CHECK["Semantic Intent Cache<br/>ChromaDB Cosine Embedding"]:::amberBox
+
+    AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.5 Failover"]:::blueBox
+
+    GUARD["[ 5. SAFETY RULES & POLICY ]<br/><b>Deterministic Engine (policy.py)</b><br/>Evaluates Intent, Thresholds & Risk"]:::greenBox
+
+    RAG_REPLY["[ RAG AUTO-REPLY ]<br/>Grounded Notion Press Policy<br/><i>(Personalized with New Author Name)</i>"]:::greenBox
+    TEAM_ROUTE["[ ROUTE TO TEAM ]<br/>Dispatched to Department<br/><i>(Finance, QA/Printing, Design)</i>"]:::cyanBox
+    NEED_INFO["[ MISSING INFO ]<br/>LangGraph interrupt()<br/><i>(ISBN or Order ID Absent)</i>"]:::purpleBox
+    HITL["[ SUPERVISOR APPROVAL ]<br/>LangGraph interrupt()<br/><i>(Urgency &gt;= 4, Conf &lt; 70%, High Risk)</i>"]:::purpleBox
+
+    RESOLUTION["[ 7. FINAL RESOLUTION ]<br/>Dispatched Action & Logged Metrics"]:::highlightBox
+    MEMORY["[ 8. SYSTEM MEMORY ]<br/>SQLite Checkpointer & ChromaDB Vector Store"]:::cyanBox
+
+    ROOT --> UI
+    UI --> GATEWAY
+    GATEWAY --> SPAM_CHECK
+
+    SPAM_CHECK -->|"Spam Score &gt;= 0.70"| SPAM
+    SPAM_CHECK -->|"Spam Score &lt; 0.70 (Legitimate Mail)"| CACHE_CHECK
+
+    CACHE_CHECK -->|"Cosine Sim &gt;= 0.90<br/>(Cache Hit - Reuses Intent, Skips LLM)"| GUARD
+    CACHE_CHECK -->|"Cosine Sim &lt; 0.90<br/>(Cache Miss - Requires LLM)"| AI
+
+    AI --> GUARD
+
+    GUARD -->|"Missing Required Fields<br/>(ISBN, Order ID Absent)"| NEED_INFO
+    GUARD -->|"Urgency &gt;= 4 OR Conf &lt; 70%<br/>OR High-Impact (Refund/Complaint/ISBN)"| HITL
+    GUARD -->|"Safe Informational Intent<br/>(General, Status, Distribution)"| RAG_REPLY
+    GUARD -->|"Safe Departmental Intent<br/>(Royalty ➔ Finance, Print ➔ QA, Cover ➔ Design)"| TEAM_ROUTE
+
+    RAG_REPLY --> RESOLUTION
+    TEAM_ROUTE --> RESOLUTION
+    NEED_INFO -.->|Author Response| AI
+    HITL -->|Supervisor Approved / Corrected| RESOLUTION
+
+    RESOLUTION --> MEMORY
+```
+
+<details>
+<summary><b>View ASCII / Text Tree Diagram</b></summary>
+
 ```text
                            [ 1. INCOMING EMAIL ]
                 Raw Email Payload (Subject, Body, Attachments)
@@ -71,6 +132,7 @@ The system uses a single AI decision component orchestrated by a stateful LangGr
                      Thread State Recovery                Dynamic Few-Shot RAG
                       & HITL Resumption                   & Policy Collections
 ```
+</details>
 
 ### 🏷️ Plain-English Flow Guide (For Non-Technical Reviewers)
 
@@ -80,7 +142,7 @@ The system uses a single AI decision component orchestrated by a stateful LangGr
 | **`[ 2. USER INTERFACE ]`** | Support agents view real-time triage, live streaming analysis, and approval cards. | Clear, progressive UI without loading delays. |
 | **`[ 3. BACKEND GATEWAY ]`** | High-performance FastAPI server coordinates the stateful workflow. | Reliable, scalable, and secure API tier. |
 | **`[ 4. SMART INTAKE FILTER ]`** | Filters junk spam instantly and matches repeated inquiries from semantic cache. | **$0 token cost** — saves money and responds in under 5ms. |
-| **`[ 5. SAFETY RULES ]`** | Pure Python deterministic guardrails ensure safe business policy compliance. | Eliminates AI hallucination on refunds or sensitive actions. |
+| **`[ 5. SAFETY RULES & POLICY ]`** | Pure Python deterministic engine (`policy.py`) routes on explicit criteria: <br>• **`[ RAG AUTO-REPLY ]`**: Informational queries (*general_inquiry*, *publishing_status*, *distribution*) via ChromaDB policy chunks.<br>• **`[ ROUTE TO TEAM ]`**: Departmental requests (*royalty_payment* ➔ Finance, *printing_issue* ➔ QA, *cover_design* ➔ Design).<br>• **`[ MISSING INFO ]`**: Halts if critical identifiers are absent.<br>• **`[ SUPERVISOR APPROVAL ]`**: Urgency &ge; 4, Confidence &lt; 70%, or High Risk. | Eliminates AI hallucination and ensures safe, departmental dispatch. |
 | **`[ 6. ARCHIVE ]`** | Commercial marketing and spam emails are quarantined without calling AI. | Keeps human agents focused strictly on real authors. |
 | **`[ 7. RESOLUTION ]`** | Policy-grounded reply is drafted and approved actions are executed automatically. | Fast, consistent, and courteous author support. |
 | **`[ 8. SYSTEM MEMORY ]`** | Saves thread states and supervisor corrections into persistent vector storage. | AI remembers conversations and learns from past corrections. |
@@ -99,9 +161,7 @@ The system uses a single AI decision component orchestrated by a stateful LangGr
 
 - 📝 **[Design Decisions, Limitations & Roadmap](docs/DESIGN_DECISIONS_AND_LIMITATIONS.md)**: Dedicated assessment deliverable detailing core decisions, invariants, current limitations, and production upgrades.
 - 📐 **[System Design & Architecture](docs/SYSTEM_DESIGN.md)**: Detailed breakdown of design decisions, multi-provider failover, HITL states, and production roadmap.
-- 🛡️ **[Design Notes & Reliability](DESIGN_NOTES.md)**: Analysis of agent harness, failure recovery, stopping limits, and invariant safety checks.
-- ⚡ **[Intake Filter Optimization](docs/INTAKE_FILTER_DESIGN.md)**: Fast-path cost reduction engine ($0 spam triage + semantic caching).
-- 🚀 **[Deployment & CI/CD Guide](docs/DEPLOYMENT.md)**: Automated GitHub Actions CI pipeline, Docker containers, and cloud deployment guides.
+- 🧪 **[Sample Test Cases & Evaluation Scenarios](#-sample-test-cases--evaluation-scenarios)**: 10 realistic author scenarios in the mock inbox + 74 automated unit tests in `pytest`.
 
 ## 🚀 Quick Start
 
@@ -122,6 +182,32 @@ The system uses a single AI decision component orchestrated by a stateful LangGr
    ```
 4. **Open** `http://localhost:5173`
 
+## 🧪 Sample Test Cases & Evaluation Scenarios
+
+The system includes both interactive scenario evaluation emails and a complete automated regression test suite:
+
+### 1. Preloaded Scenario Test Emails (Mock Inbox)
+The interactive inbox is pre-seeded with 10 realistic author scenarios covering the assessment requirements:
+- **Missing Information & Anti-Hallucination**: Inquiries lacking critical identifiers (e.g., missing ISBN or order ID) trigger `request_missing_info` without fabricating details.
+- **High-Impact Guardrails**: High-value refund requests (> ₹1,000) and legal disputes automatically enforce supervisor sign-off (`requires_human_approval = True`), overriding the LLM.
+- **Human-in-the-Loop Feedback Loop**: Correcting an email in the UI stores the exemplar in ChromaDB, allowing future similar emails to benefit immediately via few-shot retrieval.
+- **Spam & Fast-Path Intake**: Commercial SEO spam is quarantined at $0 token cost in ~1ms without LLM invocation.
+- **Multi-Intent Edge Cases**: Complex multi-issue author emails (royalty discrepancy + distribution out of stock).
+
+### 2. Automated Unit Tests (74 Tests, 100% Passing)
+Run the full test suite via `uv`:
+```bash
+cd backend
+uv run pytest
+```
+- `test_graph.py`: LangGraph state machine routing, guardrail overrides, and interrupts.
+- `test_feedback_store.py`: ChromaDB few-shot learning and human correction persistence.
+- `test_intake_filter.py`: Heuristic spam triage and priority categorization.
+- `test_security.py`: Prompt injection defenses and rate limiting.
+- `test_intent_cache.py`: Cosine similarity semantic caching.
+- `test_knowledge_base.py`: Notion Press policy grounding and retrieval.
+- `test_main.py`: FastAPI endpoints and SSE streaming.
+
 ## 🛡️ Reliability & Agent Harness (Production Considerations)
 
 - **Retries**: LLM calls retry automatically on failure (up to 2 times). After 3 total attempts, the workflow routes to manual review.
@@ -134,4 +220,3 @@ The system uses a single AI decision component orchestrated by a stateful LangGr
 - **CI Pipeline**: Automated backend test suite (`pytest`) and frontend verification (`oxlint` + `vite build`) via GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 - **Backend Deployment**: Containerized on **Koyeb** via [`backend/Dockerfile`](backend/Dockerfile) with dynamic port handling and CORS support.
 - **Frontend Deployment**: Hosted on **Vercel** with global edge CDN and automatic PR previews.
-- **Full Guide**: See [Deployment & CI/CD Guide](docs/DEPLOYMENT.md).

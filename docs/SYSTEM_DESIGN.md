@@ -19,31 +19,36 @@ This document details the architectural decisions, technology stack rationale, s
 
 ## 2. Key Architecture & Design Decisions
 
-```
-                                  ┌─────────────────────────────────────────────────────────┐
-                                  │                     CLIENT (React/TS)                   │
-                                  └────────────────────────────┬────────────────────────────┘
-                                                               │  SSE Stream / REST
-                                                               ▼
-┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                  FASTAPI BACKEND                                                         │
-│                                                                                                                           │
-│   ┌────────────────────────┐         ┌─────────────────────────────────────────────────┐         ┌────────────────────┐   │
-│   │   Inbound API Routes   │ ──────▶ │             LangGraph State Machine             │ ──────▶ │ SQLite Checkpointer│   │
-│   └────────────────────────┘         │                                                 │         │  (Thread State DB) │   │
-│                                      │  1. Ingest Email                                │         └────────────────────┘   │
-│                                      │  2. Fetch Feedback & Multi-Provider Classify    │                                  │
-│                                      │  3. Deterministic Policy & Guardrails           │         ┌────────────────────┐   │
-│                                      │  4. HITL Approval & Info Request Interruption   │ ◀────── │   Feedback Store   │   │
-│                                      │  5. Execution & Routing Action                  │         │ (corrections.json) │   │
-│                                      └────────────────────────┬────────────────────────┘         └────────────────────┘   │
-└───────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────┘
-                                                                │
-                                      ┌─────────────────────────┴─────────────────────────┐
-                                      ▼                                                   ▼
-                       ┌──────────────────────────────┐                   ┌──────────────────────────────┐
-                       │  Gemini 3.5 Flash (Primary)  │ ── [Failover] ──▶ │     Groq GPT-OSS-120B        │
-                       └──────────────────────────────┘                   └──────────────────────────────┘
+```mermaid
+flowchart TD
+    classDef clientBox fill:#ff99f7,stroke:#18181b,stroke-width:3px,color:#18181b,font-weight:bold,rx:8px,ry:8px;
+    classDef gatewayBox fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#1e1b4b,font-weight:500,rx:8px,ry:8px;
+    classDef graphBox fill:#c7d2fe,stroke:#4338ca,stroke-width:2.5px,color:#1e1b4b,font-weight:bold,rx:8px,ry:8px;
+    classDef memoryBox fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e,font-weight:500,rx:8px,ry:8px;
+    classDef llmBox fill:#d1fae5,stroke:#059669,stroke-width:2px,color:#064e3b,font-weight:bold,rx:8px,ry:8px;
+    classDef failoverBox fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:bold,rx:8px,ry:8px;
+
+    CLIENT["<b>CLIENT APPLICATION</b><br/>React 18 + TypeScript + Vite<br/>Mock Inbox & Real-Time SSE Triage"]:::clientBox
+
+    subgraph BACKEND ["FASTAPI ASYNC BACKEND"]
+        ROUTES["Inbound API Routes<br/>/api/process-stream & REST"]:::gatewayBox
+        GRAPH["LangGraph Orchestrator<br/>State Machine & Policy Engine<br/>• Urgency Threshold: &gt;= 4 ➔ Approval<br/>• Confidence Threshold: &lt; 70% ➔ Approval<br/>• Missing Required Data ➔ interrupt()"]:::graphBox
+        CHECKPOINT["SQLite Checkpointer<br/>(checkpoints.db Thread State)"]:::memoryBox
+        FEEDBACK["ChromaDB Vector Store<br/>Few-Shot Feedback Store"]:::memoryBox
+    end
+
+    subgraph LLM_TIER ["MULTI-PROVIDER AI INFERENCE"]
+        PRIMARY["Gemini 3.5 Flash<br/>(Primary Structured Output)"]:::llmBox
+        FAILOVER["Groq GPT-OSS-120B<br/>(Sub-Second Automatic Failover)"]:::failoverBox
+    end
+
+    CLIENT -->|SSE Stream / REST| ROUTES
+    ROUTES --> GRAPH
+    GRAPH <-->|Thread State Persistence| CHECKPOINT
+    FEEDBACK -->|Dynamic Exemplars| GRAPH
+    GRAPH -->|Prompt & Schema| PRIMARY
+    PRIMARY -.->|On Rate Limit / 429| FAILOVER
+    FAILOVER -->|Structured Decision| GRAPH
 ```
 
 ### A. Zero-Wait Auto-Triage & Progressive SSE Streaming
@@ -94,18 +99,24 @@ This document details the architectural decisions, technology stack rationale, s
 
 ## 4. Production Roadmap & Improvements
 
-```
-+----------------------------------------------------------------------------------------------------+
-|                                    ENTERPRISE ARCHITECTURE ROADMAP                                  |
-+----------------------------------------------------------------------------------------------------+
-|                                                                                                    |
-|  [Email Gateways] ──▶ [Event Bus / Kafka] ──▶ [Distributed Workers] ──▶ [PostgreSQL Checkpointer]  |
-|  (SendGrid/SES/Gmail)   (Pub/Sub Queue)       (FastAPI + Celery)        (AsyncPostgresSaver)       |
-|                                                       │                                            |
-|                                                       ▼                                            |
-|                                            [Qdrant / pgvector]                                     |
-|                                            (Semantic Few-Shot Memory)                              |
-+----------------------------------------------------------------------------------------------------+
+```mermaid
+flowchart LR
+    classDef pinkBox fill:#ff99f7,stroke:#18181b,stroke-width:2.5px,color:#18181b,font-weight:bold,rx:6px,ry:6px;
+    classDef lavenderBox fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#1e1b4b,font-weight:500,rx:6px,ry:6px;
+    classDef blueBox fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#1e3a8a,font-weight:500,rx:6px,ry:6px;
+    classDef cyanBox fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e,font-weight:500,rx:6px,ry:6px;
+    classDef emeraldBox fill:#d1fae5,stroke:#059669,stroke-width:1.5px,color:#064e3b,font-weight:500,rx:6px,ry:6px;
+
+    GATEWAYS["<b>Email Inbound</b><br/>SendGrid / SES / Gmail"]:::pinkBox
+    QUEUE["<b>Event Bus</b><br/>Kafka / RabbitMQ PubSub"]:::lavenderBox
+    WORKERS["<b>Distributed Workers</b><br/>FastAPI + Celery Tasks"]:::blueBox
+    POSTGRES["<b>Enterprise DB</b><br/>AsyncPostgresSaver (RDS)"]:::cyanBox
+    VECTOR["<b>Vector Memory</b><br/>pgvector / Qdrant"]:::emeraldBox
+
+    GATEWAYS --> QUEUE
+    QUEUE --> WORKERS
+    WORKERS --> POSTGRES
+    WORKERS --> VECTOR
 ```
 
 ### 1. Production Database & Distributed Checkpointing

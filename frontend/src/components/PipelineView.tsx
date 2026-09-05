@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import type { ProcessingResponse } from "../types";
 
 interface Props {
@@ -7,14 +6,6 @@ interface Props {
 }
 
 export default function PipelineView({ state, isStreaming = false }: Props) {
-  const logContainerRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll execution log to bottom as new events arrive
-  useEffect(() => {
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-    }
-  }, [state?.processing_log]);
 
   if (!state) {
     return (
@@ -103,14 +94,14 @@ export default function PipelineView({ state, isStreaming = false }: Props) {
     <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-6">
       <div className="flex items-center justify-between border-b border-border pb-4">
         <h3 className="font-bold text-sm text-foreground flex items-center gap-2 tracking-tight">
-          <span className="text-primary text-base">⚡</span> LangGraph State Machine
+          <span className="text-primary text-base">⚡</span> Email Processing Pipeline
         </h3>
         <span className={`text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded border ${
           isStreaming 
             ? "bg-primary/20 text-primary border-primary animate-pulse" 
             : "bg-primary/10 text-primary border-primary/20"
         }`}>
-          {isStreaming ? "Live Executing" : "Stateful DAG"}
+          {isStreaming ? "Live Executing" : "Automated"}
         </span>
       </div>
       
@@ -166,26 +157,6 @@ export default function PipelineView({ state, isStreaming = false }: Props) {
           );
         })}
       </div>
-      
-      {/* Real-time State Log */}
-      {state.processing_log && (
-        <div className="pt-4 border-t border-border">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground">Execution Log</h4>
-            <span className="text-[10px] font-mono text-muted-foreground">{state.processing_log.length} events</span>
-          </div>
-          <div 
-            ref={logContainerRef}
-            className="bg-background border border-border/80 rounded-lg p-3 h-36 overflow-y-auto font-mono text-[11px] text-muted-foreground space-y-1.5 leading-relaxed scroll-smooth"
-          >
-            {state.processing_log.map((log, i) => (
-              <div key={i} className="text-foreground/80 hover:text-primary transition-colors">
-                {log}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
