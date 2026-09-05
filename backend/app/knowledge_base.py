@@ -22,9 +22,11 @@ class AuthorKnowledgeBase:
         self,
         persist_directory: str = DEFAULT_PERSIST_DIR,
         collection_name: str = DEFAULT_COLLECTION_NAME,
+        auto_seed: bool = False,
     ):
         self.persist_directory = persist_directory
         self.collection_name = collection_name
+        self.auto_seed = auto_seed
         self.lock = threading.RLock()
         self.client = None
         self.collection = None
@@ -36,6 +38,8 @@ class AuthorKnowledgeBase:
         with self.lock:
             self._init_chroma_client()
             self._sync_registry_from_chroma()
+            if self.auto_seed and self.collection and self.collection.count() == 0:
+                self._auto_seed_default_handbook()
 
     def _init_chroma_client(self):
         """Initialize ChromaDB client."""
@@ -97,6 +101,34 @@ class AuthorKnowledgeBase:
             logger.info(f"[KB] Loaded {len(self._doc_registry)} existing documents ({count} chunks) from ChromaDB")
         except Exception as e:
             logger.warning(f"[KB] Failed to sync registry from ChromaDB: {e}")
+
+    def _auto_seed_default_handbook(self):
+        """Auto-seed default Notion Press handbook if knowledge base collection is empty on startup."""
+        try:
+            candidate_paths = [
+                os.path.join(os.path.dirname(__file__), "sample_docs", "Notion_Press_Author_Publishing_Policy_Handbook.pdf"),
+                os.path.join(os.path.dirname(__file__), "..", "..", "sample_docs", "Notion_Press_Author_Publishing_Policy_Handbook.pdf"),
+                "/app/app/sample_docs/Notion_Press_Author_Publishing_Policy_Handbook.pdf",
+            ]
+            pdf_path = None
+            for p in candidate_paths:
+                if os.path.exists(p):
+                    pdf_path = p
+                    break
+            if not pdf_path:
+                return
+
+            with open(pdf_path, "rb") as f:
+                pdf_bytes = f.read()
+
+            from app.pdf_parser import extract_text_from_pdf_bytes, chunk_document_text
+            text = extract_text_from_pdf_bytes(pdf_bytes)
+            chunks = chunk_document_text(text, "Notion_Press_Author_Publishing_Policy_Handbook.pdf")
+            if chunks:
+                self.add_document_chunks("Notion_Press_Author_Publishing_Policy_Handbook.pdf", chunks)
+                logger.info(f"[KB] Auto-seeded {len(chunks)} default Notion Press policy chunks into ChromaDB on startup")
+        except Exception as e:
+            logger.warning(f"[KB] Auto-seeding default handbook skipped: {e}")
 
     def add_document_chunks(self, filename: str, chunks: list[dict]) -> int:
         """
@@ -378,4 +410,4 @@ class AuthorKnowledgeBase:
 
 
 # Singleton instance
-author_knowledge_base = AuthorKnowledgeBase()
+author_knowledge_base = AuthorKnowledgeBase(auto_seed=True)

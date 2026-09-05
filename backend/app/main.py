@@ -575,16 +575,32 @@ def clear_knowledge_base():
         "status": author_knowledge_base.get_status()
     }
 
+def _resolve_sample_pdf_path() -> str:
+    """Resolve sample PDF path with container and local filesystem fallbacks."""
+    candidate_paths = [
+        os.path.join(os.path.dirname(__file__), "sample_docs", "Notion_Press_Author_Publishing_Policy_Handbook.pdf"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "sample_docs", "Notion_Press_Author_Publishing_Policy_Handbook.pdf"),
+        os.path.join(os.path.dirname(__file__), "..", "sample_docs", "Notion_Press_Author_Publishing_Policy_Handbook.pdf"),
+        "/app/app/sample_docs/Notion_Press_Author_Publishing_Policy_Handbook.pdf",
+    ]
+    for p in candidate_paths:
+        abs_p = os.path.abspath(p)
+        if os.path.exists(abs_p):
+            return abs_p
+
+    target = os.path.abspath(candidate_paths[0])
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    try:
+        from app.sample_docs.generate import generate_handbook
+        generate_handbook(target)
+    except Exception as e:
+        logger.warning(f"Failed to generate handbook PDF: {e}")
+    return target
+
 @app.get("/api/knowledge/sample-pdf")
 def download_sample_pdf():
     """Download the official Notion Press Author Publishing Policy Handbook PDF."""
-    pdf_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "sample_docs", "Notion_Press_Author_Publishing_Policy_Handbook.pdf")
-    )
-    if not os.path.exists(pdf_path):
-        from scripts.generate_sample_pdf import generate_handbook
-        generate_handbook(pdf_path)
-
+    pdf_path = _resolve_sample_pdf_path()
     return FileResponse(
         path=pdf_path,
         media_type="application/pdf",
@@ -594,12 +610,7 @@ def download_sample_pdf():
 @app.post("/api/knowledge/quick-seed-sample")
 def quick_seed_sample_pdf():
     """One-click server ingestion of the Notion Press Author Publishing Policy Handbook PDF."""
-    pdf_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "sample_docs", "Notion_Press_Author_Publishing_Policy_Handbook.pdf")
-    )
-    if not os.path.exists(pdf_path):
-        from scripts.generate_sample_pdf import generate_handbook
-        generate_handbook(pdf_path)
+    pdf_path = _resolve_sample_pdf_path()
 
     with open(pdf_path, "rb") as f:
         pdf_bytes = f.read()
