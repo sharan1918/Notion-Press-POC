@@ -85,16 +85,16 @@ def test_invoke_classification_gemini_success():
         classification_explanation="Author asks for publication status"
     )
     
-    mock_gemini = MagicMock()
-    mock_gemini.with_structured_output.return_value.invoke.return_value = expected_cls
+    mock_groq = MagicMock()
+    mock_groq.with_structured_output.return_value.invoke.return_value = expected_cls
     
-    with patch("app.graph.get_llms", return_value=(mock_gemini, None)):
+    with patch("app.graph.get_llms", return_value=(None, mock_groq)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "publishing_status"
-        assert provider == "Gemini 3.5 Flash"
+        assert provider == "Groq (GPT-OSS-120B)"
 
-def test_invoke_classification_failover_to_groq():
+def test_invoke_classification_failover_to_gemini():
     expected_cls = EmailClassification(
         intent="cover_design",
         urgency=4,
@@ -104,17 +104,17 @@ def test_invoke_classification_failover_to_groq():
         classification_explanation="Author asking about book cover proof"
     )
     
-    mock_gemini = MagicMock()
-    mock_gemini.with_structured_output.return_value.invoke.side_effect = RuntimeError("Quota exceeded")
-    
     mock_groq = MagicMock()
-    mock_groq.with_structured_output.return_value.invoke.return_value = expected_cls
+    mock_groq.with_structured_output.return_value.invoke.side_effect = RuntimeError("Rate limit reached")
+    
+    mock_gemini = MagicMock()
+    mock_gemini.with_structured_output.return_value.invoke.return_value = expected_cls
     
     with patch("app.graph.get_llms", return_value=(mock_gemini, mock_groq)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "cover_design"
-        assert provider == "Groq (GPT-OSS-120B)"
+        assert provider == "Gemini 3.5 Flash"
 
 def test_invoke_classification_no_provider_raises():
     with patch("app.graph.get_llms", return_value=(None, None)):

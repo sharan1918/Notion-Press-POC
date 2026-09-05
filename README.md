@@ -29,13 +29,13 @@ graph TD
         end
         FeedbackStore["Feedback Store (ChromaDB + JSON)"]
         SQLite["SQLite Checkpointer"]
-        Gemini["Gemini 3.5 Flash (Primary) + Groq (Failover)"]
+        LLM["Groq GPT-OSS-120B (Primary) + Gemini 3.5 Flash (Failover)"]
     end
 
     UI --> API
     API --> Ingest
     Ingest --> FetchClassify
-    FetchClassify --> Gemini
+    FetchClassify --> LLM
     FetchClassify --> Action
     Action --> PolicyCheck
     PolicyCheck --> Execute
@@ -51,7 +51,7 @@ graph TD
 
 - **Why LangGraph?** We need conditional branching, human-in-the-loop interruption, resumability, and stopping conditions. LangGraph provides these as first-class primitives.
 - **Why SSE Streaming & Auto-Processing?** Clicking an email automatically streams LangGraph node events via Server-Sent Events (SSE) in real-time and caches results. This eliminates manual trigger delays and provides progressive UI feedback while preserving API efficiency.
-- **Why Multi-Provider Failover (Gemini 3.5 Flash + Groq)?** Primary classification uses Gemini 3.5 Flash for high-accuracy reasoning and JSON schema enforcement, with seamless automatic fallback to Groq (`openai/gpt-oss-120b`) if Google API quotas are exceeded or network timeouts occur.
+- **Why Multi-Provider Failover (Groq + Gemini 3.5 Flash)?** Primary classification uses Groq (`openai/gpt-oss-120b`) for sub-second inference speeds (~500 tokens/sec), with seamless automatic fallback to Gemini 3.5 Flash if Groq rate limits or network issues occur.
 - **Why LangChain?** Used strictly for model interfaces and structured output abstraction (`.with_structured_output()`). No unnecessary agents or chains.
 - **Why not multi-agent?** A single AI decision component inside a stateful workflow is simpler, easier to test, and more reliable than a swarm of autonomous agents.
 - **Why deterministic guardrails?** An LLM should recommend actions, but standard Python code should enforce business safety logic.
@@ -59,6 +59,7 @@ graph TD
 
 ## 📚 Assessment Deliverables & Documentation
 
+- 📝 **[Design Decisions, Limitations & Roadmap](docs/DESIGN_DECISIONS_AND_LIMITATIONS.md)**: Dedicated assessment deliverable detailing core decisions, invariants, current limitations, and production upgrades.
 - 📐 **[System Design & Architecture](docs/SYSTEM_DESIGN.md)**: Detailed breakdown of design decisions, multi-provider failover, HITL states, and production roadmap.
 - 🛡️ **[Design Notes & Reliability](DESIGN_NOTES.md)**: Analysis of agent harness, failure recovery, stopping limits, and invariant safety checks.
 - ⚡ **[Intake Filter Optimization](docs/INTAKE_FILTER_DESIGN.md)**: Fast-path cost reduction engine ($0 spam triage + semantic caching).

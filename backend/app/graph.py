@@ -66,27 +66,27 @@ def get_llms():
 def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification, str]:
     gemini_llm, groq_llm = get_llms()
     
-    # 1. Attempt Gemini (Primary)
-    if gemini_llm:
-        try:
-            structured_llm = gemini_llm.with_structured_output(EmailClassification)
-            res = structured_llm.invoke(prompt)
-            return res, "Gemini 3.5 Flash"
-        except Exception as e:
-            err_msg = str(e)
-            if groq_llm:
-                log(state, f"Gemini quota/error ({err_msg[:60]}...). Automatically switching to Groq failover...")
-            else:
-                raise e
-                
-    # 2. Attempt Groq (Failover / Direct)
+    # 1. Attempt Groq (Primary)
     if groq_llm:
         try:
             structured_llm = groq_llm.with_structured_output(EmailClassification)
             res = structured_llm.invoke(prompt)
             return res, "Groq (GPT-OSS-120B)"
         except Exception as e:
-            log(state, f"Groq execution error: {str(e)[:80]}")
+            err_msg = str(e)
+            if gemini_llm:
+                log(state, f"Groq rate limit/error ({err_msg[:60]}...). Automatically switching to Gemini failover...")
+            else:
+                raise e
+                
+    # 2. Attempt Gemini (Failover / Secondary)
+    if gemini_llm:
+        try:
+            structured_llm = gemini_llm.with_structured_output(EmailClassification)
+            res = structured_llm.invoke(prompt)
+            return res, "Gemini 3.5 Flash"
+        except Exception as e:
+            log(state, f"Gemini execution error: {str(e)[:80]}")
             raise e
         
     raise RuntimeError("No working LLM provider found. Please set GOOGLE_API_KEY or GROQ_API_KEY in backend/.env")
@@ -259,28 +259,30 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
     draft = None
     provider_used = None
 
-    if gemini_llm:
+    # 1. Attempt Groq (Primary)
+    if groq_llm:
         try:
             # Declarative LangChain Expression Language (LCEL) chain
-            chain = RAG_REPLY_PROMPT_TEMPLATE | gemini_llm | output_parser
-            raw = chain.invoke(rag_inputs)
-            draft = extract_content_str(raw)
-            provider_used = "Gemini 3.5 Flash"
-        except Exception as e:
-            logger.warning(f"Gemini failed for RAG reply generation: {e}")
-            if groq_llm:
-                log(state, f"Gemini error/timeout ({str(e)[:60]}...). Automatically switching to Groq failover for RAG...")
-
-    if not draft and groq_llm:
-        try:
-            # Declarative LangChain Expression Language (LCEL) failover chain
             chain = RAG_REPLY_PROMPT_TEMPLATE | groq_llm | output_parser
             raw = chain.invoke(rag_inputs)
             draft = extract_content_str(raw)
             provider_used = "Groq (GPT-OSS-120B)"
         except Exception as e:
             logger.warning(f"Groq failed for RAG reply generation: {e}")
-            log(state, f"Groq failover error: {str(e)[:60]}")
+            if gemini_llm:
+                log(state, f"Groq error/timeout ({str(e)[:60]}...). Automatically switching to Gemini failover for RAG...")
+
+    # 2. Attempt Gemini (Failover / Secondary)
+    if not draft and gemini_llm:
+        try:
+            # Declarative LangChain Expression Language (LCEL) failover chain
+            chain = RAG_REPLY_PROMPT_TEMPLATE | gemini_llm | output_parser
+            raw = chain.invoke(rag_inputs)
+            draft = extract_content_str(raw)
+            provider_used = "Gemini 3.5 Flash"
+        except Exception as e:
+            logger.warning(f"Gemini failed for RAG reply generation: {e}")
+            log(state, f"Gemini failover error: {str(e)[:60]}")
 
     if draft and draft.strip():
         state["draft_response"] = draft.strip()
