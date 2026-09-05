@@ -52,7 +52,7 @@ def sanitize_prompt_input(text: str) -> str:
     if not text:
         return ""
     # Neutralize potential delimiter breakouts
-    cleaned = re.sub(r'</?(?:author_email_subject|author_email_body|supplementary_info|attachment_proofs|retrieved_policies|author_inquiry)>', '', text, flags=re.IGNORECASE)
+    cleaned = re.sub(r'</?(?:author_email_subject|author_email_body|supplementary_info|attachment_proofs|retrieved_policies|author_inquiry|verified_policies)>', '', text, flags=re.IGNORECASE)
     # Strip null bytes and non-printable control characters except standard whitespace
     cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', cleaned)
     return cleaned.strip()

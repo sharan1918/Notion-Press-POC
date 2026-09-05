@@ -15,6 +15,7 @@ from app.feedback_store import feedback_store
 from app.intake_filter import check_spam
 from app.intent_cache import intent_cache
 from app.knowledge_base import author_knowledge_base
+from app.utils import extract_content_str
 
 load_dotenv(override=True)
 
@@ -267,25 +268,6 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
     )
 
     gemini_llm, groq_llm = get_llms()
-    def _extract_content_str(content_val) -> str:
-        if content_val is None:
-            return ""
-        if isinstance(content_val, str):
-            return content_val
-        if isinstance(content_val, list):
-            parts = []
-            for item in content_val:
-                if isinstance(item, str):
-                    parts.append(item)
-                elif isinstance(item, dict) and "text" in item:
-                    parts.append(item["text"])
-                elif hasattr(item, "text"):
-                    parts.append(getattr(item, "text"))
-                else:
-                    parts.append(str(item))
-            return "".join(parts)
-        return str(content_val)
-
     draft = None
     provider_used = None
 
@@ -293,7 +275,7 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
         try:
             res = gemini_llm.invoke(prompt)
             raw = res.content if hasattr(res, "content") else str(res)
-            draft = _extract_content_str(raw)
+            draft = extract_content_str(raw)
             provider_used = "Gemini 3.5 Flash"
         except Exception as e:
             logger.warning(f"Gemini failed for RAG reply generation: {e}")
@@ -304,7 +286,7 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
         try:
             res = groq_llm.invoke(prompt)
             raw = res.content if hasattr(res, "content") else str(res)
-            draft = _extract_content_str(raw)
+            draft = extract_content_str(raw)
             provider_used = "Groq (GPT-OSS-120B)"
         except Exception as e:
             logger.warning(f"Groq failed for RAG reply generation: {e}")
