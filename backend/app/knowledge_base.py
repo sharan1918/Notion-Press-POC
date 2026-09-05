@@ -106,18 +106,23 @@ class AuthorKnowledgeBase:
         if not chunks:
             return 0
 
+        clean_filename = os.path.basename(filename).strip()
+        if not clean_filename:
+            clean_filename = "document"
+
         with self.lock:
             # If document already exists, remove older chunks first
-            self.delete_document(filename)
+            self.delete_document(clean_filename)
 
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             ids = [chunk["id"] for chunk in chunks]
             documents = [chunk["content"] for chunk in chunks]
             metadatas = [
                 {
-                    "filename": filename,
-                    "title": chunk.get("title", f"{filename} (Section {i+1})"),
+                    "filename": clean_filename,
+                    "title": chunk.get("title", f"{clean_filename} (Section {i+1})"),
                     "intent": chunk.get("intent", "general_inquiry"),
+                    "category": "public_policy",
                     "chunk_index": chunk.get("chunk_index", i + 1),
                     "uploaded_at": now_str,
                 }
@@ -138,43 +143,48 @@ class AuthorKnowledgeBase:
             for chunk, meta in zip(chunks, metadatas):
                 self._in_memory_docs.append({
                     "id": chunk["id"],
-                    "filename": filename,
+                    "filename": clean_filename,
                     "title": meta["title"],
                     "intent": meta["intent"],
+                    "category": "public_policy",
                     "content": chunk["content"],
                     "uploaded_at": now_str,
                 })
 
-            self._doc_registry[filename] = {
-                "filename": filename,
+            self._doc_registry[clean_filename] = {
+                "filename": clean_filename,
                 "chunk_count": len(chunks),
                 "uploaded_at": now_str,
             }
 
-            logger.info(f"[KB] Ingested {len(chunks)} chunks for '{filename}'")
+            logger.info(f"[KB] Ingested {len(chunks)} chunks for '{clean_filename}'")
             return len(chunks)
 
     def delete_document(self, filename: str) -> int:
         """Remove all chunks associated with a specific document filename."""
+        clean_filename = os.path.basename(filename).strip()
+        if not clean_filename:
+            return 0
+
         with self.lock:
             deleted_count = 0
             if self.collection:
                 try:
-                    existing = self.collection.get(where={"filename": filename})
+                    existing = self.collection.get(where={"filename": clean_filename})
                     ids_to_delete = existing.get("ids", [])
                     if ids_to_delete:
                         self.collection.delete(ids=ids_to_delete)
                         deleted_count = len(ids_to_delete)
                 except Exception as e:
-                    logger.warning(f"[KB] ChromaDB delete error for {filename}: {e}")
+                    logger.warning(f"[KB] ChromaDB delete error for {clean_filename}: {e}")
 
             # Remove from in-memory
             before_len = len(self._in_memory_docs)
-            self._in_memory_docs = [d for d in self._in_memory_docs if d.get("filename") != filename]
+            self._in_memory_docs = [d for d in self._in_memory_docs if d.get("filename") != clean_filename]
             deleted_count = max(deleted_count, before_len - len(self._in_memory_docs))
 
-            self._doc_registry.pop(filename, None)
-            logger.info(f"[KB] Deleted document '{filename}' ({deleted_count} chunks removed)")
+            self._doc_registry.pop(clean_filename, None)
+            logger.info(f"[KB] Deleted document '{clean_filename}' ({deleted_count} chunks removed)")
             return deleted_count
 
     def clear_all(self) -> int:

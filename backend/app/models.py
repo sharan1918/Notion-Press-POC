@@ -93,3 +93,139 @@ class EmailProcessingState(TypedDict):
     # Observability
     processing_log: list[str]              # Timestamped log of every state transition
     final_status: str                      # "executed" | "rejected" | "manual_review" | "error" | "pending_approval" | "pending_info" | "processing"
+
+
+# ── Validated API Request Models ─────────────────────────────────────────────
+
+import re
+from pydantic import field_validator
+
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+ID_REGEX = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+VALID_INTENTS = {
+    "royalty_payment", "publishing_status", "printing_issue",
+    "cover_design", "distribution", "isbn_metadata",
+    "general_inquiry", "complaint", "spam"
+}
+
+
+class CreateEmailRequest(BaseModel):
+    sender_name: str = Field(..., max_length=100)
+    sender: str = Field(..., max_length=255)
+    subject: str = Field(..., max_length=255)
+    body: str = Field(..., max_length=20000)
+
+    @field_validator("sender_name")
+    @classmethod
+    def validate_sender_name(cls, v: str) -> str:
+        v_stripped = v.strip()
+        if not v_stripped:
+            raise ValueError("Sender name is required")
+        return v_stripped
+
+    @field_validator("sender")
+    @classmethod
+    def validate_sender(cls, v: str) -> str:
+        v_stripped = v.strip()
+        if not v_stripped:
+            raise ValueError("Sender email is required")
+        if not EMAIL_REGEX.match(v_stripped):
+            raise ValueError("Invalid email format")
+        return v_stripped
+
+    @field_validator("subject")
+    @classmethod
+    def validate_subject(cls, v: str) -> str:
+        v_stripped = v.strip()
+        if not v_stripped:
+            raise ValueError("Subject is required")
+        return v_stripped
+
+    @field_validator("body")
+    @classmethod
+    def validate_body(cls, v: str) -> str:
+        v_stripped = v.strip()
+        if not v_stripped:
+            raise ValueError("Email body is required")
+        return v_stripped
+
+
+class CorrectionRequest(BaseModel):
+    corrected_intent: str
+    notes: str = Field(default="", max_length=2000)
+
+    @field_validator("corrected_intent")
+    @classmethod
+    def validate_intent(cls, v: str) -> str:
+        v_stripped = v.strip()
+        if v_stripped not in VALID_INTENTS:
+            raise ValueError(f"Invalid intent '{v_stripped}'. Must be one of: {', '.join(sorted(VALID_INTENTS))}")
+        return v_stripped
+
+    @field_validator("notes")
+    @classmethod
+    def clean_notes(cls, v: str) -> str:
+        return v.strip()
+
+
+import os
+
+class InfoRequest(BaseModel):
+    additional_info: str = Field(default="", max_length=10000)
+    attachments: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("additional_info")
+    @classmethod
+    def clean_info(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("attachments")
+    @classmethod
+    def validate_attachments(cls, v: list[str]) -> list[str]:
+        cleaned = []
+        for att in v:
+            name = att.strip()
+            # Normalize path separators and extract base filename to eliminate path traversal
+            normalized = name.replace("\\", "/").rstrip("/")
+            base_name = normalized.split("/")[-1] if normalized else "attachment"
+            # Replace unsafe characters and strip leading dots/traversals
+            safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', base_name).lstrip(".")
+            # Ensure no remaining '..' sequence
+            safe_name = re.sub(r'\.{2,}', '.', safe_name)
+            if safe_name:
+                cleaned.append(safe_name[:255])
+        return cleaned
+
+
+class TriageRequest(BaseModel):
+    email_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("email_ids")
+    @classmethod
+    def validate_email_ids(cls, v: list[str]) -> list[str]:
+        if len(v) > 50:
+            raise ValueError("Too many email IDs requested. Maximum allowed is 50.")
+        cleaned = []
+        for eid in v:
+            eid_stripped = eid.strip()
+            if eid_stripped and not ID_REGEX.match(eid_stripped):
+                raise ValueError(f"Invalid email ID format: '{eid_stripped}'")
+            if eid_stripped:
+                cleaned.append(eid_stripped)
+        return cleaned
+
+
+class TestQueryRequest(BaseModel):
+    __test__ = False
+    query: str = Field(..., min_length=1, max_length=1000)
+    top_k: int = Field(default=2, ge=1, le=10)
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, v: str) -> str:
+        v_stripped = v.strip()
+        if not v_stripped:
+            raise ValueError("Query string cannot be empty")
+        return v_stripped
+

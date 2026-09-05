@@ -8,12 +8,12 @@ import threading
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Header, UploadFile, File
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 import logging
 from typing import Optional
-from pydantic import BaseModel
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 from dotenv import load_dotenv
@@ -25,7 +25,14 @@ from app.graph import create_graph
 from app.feedback_store import feedback_store
 from app.knowledge_base import author_knowledge_base
 from app.pdf_parser import extract_text_from_pdf_bytes, chunk_document_text
-from app.config import API_AUTH_KEY, RATE_LIMIT_EMAILS_PER_MINUTE
+from app.config import (
+    API_AUTH_KEY, RATE_LIMIT_EMAILS_PER_MINUTE,
+    RATE_LIMIT_PROCESS_PER_MINUTE, RATE_LIMIT_TRIAGE_PER_MINUTE, RATE_LIMIT_UPLOAD_PER_MINUTE
+)
+from app.models import (
+    CreateEmailRequest, CorrectionRequest, InfoRequest,
+    TriageRequest, TestQueryRequest
+)
 
 
 # Ensure data directory exists
@@ -73,17 +80,30 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-cors_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:5174")
-origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    first_error = exc.errors()[0]
+    msg = first_error.get("msg", "Validation error")
+    if msg.startswith("Value error, "):
+        msg = msg[len("Value error, "):]
+    return JSONResponse(status_code=400, content={"detail": msg})
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins if "*" not in origins else ["*"],
-    allow_origin_regex=os.environ.get("CORS_ORIGIN_REGEX", r"https://.*\.vercel\.app"),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+cors_origins_env = os.environ.get("CORS_ORIGINS", "")
+origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+if not origins:
+    logging.warning("[SECURITY] No CORS_ORIGINS configured in environment. Cross-origin browser requests will be blocked.")
+
+cors_kwargs = {
+    "allow_origins": origins,
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+cors_origin_regex = os.environ.get("CORS_ORIGIN_REGEX")
+if cors_origin_regex:
+    cors_kwargs["allow_origin_regex"] = cors_origin_regex
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -92,22 +112,6 @@ async def log_requests(request: Request, call_next):
     print(f"<-- [{request.method}] {request.url.path} => {response.status_code}", flush=True)
     return response
 
-
-class CorrectionRequest(BaseModel):
-    corrected_intent: str
-    notes: str
-
-class InfoRequest(BaseModel):
-    additional_info: str
-    attachments: list[str] = []
-
-class CreateEmailRequest(BaseModel):
-    sender_name: str
-    sender: str
-    subject: str
-    body: str
-
-EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
 class InMemoryRateLimiter:
     def __init__(self, max_requests: int = 15, window_seconds: int = 60):
@@ -128,7 +132,15 @@ class InMemoryRateLimiter:
             self.requests[key] = valid_timestamps
             return True
 
+def get_client_ip(request: Request) -> str:
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
 email_rate_limiter = InMemoryRateLimiter(max_requests=RATE_LIMIT_EMAILS_PER_MINUTE, window_seconds=60)
+process_rate_limiter = InMemoryRateLimiter(max_requests=RATE_LIMIT_PROCESS_PER_MINUTE, window_seconds=60)
+triage_rate_limiter = InMemoryRateLimiter(max_requests=RATE_LIMIT_TRIAGE_PER_MINUTE, window_seconds=60)
+upload_rate_limiter = InMemoryRateLimiter(max_requests=RATE_LIMIT_UPLOAD_PER_MINUTE, window_seconds=60)
 
 @app.get("/api/emails")
 def get_emails():
@@ -143,24 +155,13 @@ def create_email(
     if not x_api_key or x_api_key != API_AUTH_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     if not email_rate_limiter.check(client_ip):
         raise HTTPException(
             status_code=429,
-            detail="Rate limit exceeded for author email simulation. Maximum 15 emails per minute."
+            detail=f"Rate limit exceeded for author email simulation. Maximum {RATE_LIMIT_EMAILS_PER_MINUTE} emails per minute."
         )
 
-    if not req.sender_name.strip():
-        raise HTTPException(status_code=400, detail="Sender name is required")
-    if not req.sender.strip():
-        raise HTTPException(status_code=400, detail="Sender email is required")
-    if not EMAIL_REGEX.match(req.sender.strip()):
-        raise HTTPException(status_code=400, detail="Invalid email format")
-    if not req.subject.strip():
-        raise HTTPException(status_code=400, detail="Subject is required")
-    if not req.body.strip():
-        raise HTTPException(status_code=400, detail="Email body is required")
-        
     created = add_custom_email(
         sender_name=req.sender_name,
         sender=req.sender,
@@ -171,7 +172,14 @@ def create_email(
 
 
 @app.get("/api/process-stream/{email_id}")
-async def process_email_stream(email_id: str):
+async def process_email_stream(email_id: str, request: Request):
+    client_ip = get_client_ip(request)
+    if not process_rate_limiter.check(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded for email processing. Maximum {RATE_LIMIT_PROCESS_PER_MINUTE} requests per minute."
+        )
+
     try:
         email = get_sample_email(email_id)
     except ValueError:
@@ -233,7 +241,14 @@ async def process_email_stream(email_id: str):
     )
 
 @app.post("/api/process/{email_id}")
-def process_email(email_id: str):
+def process_email(email_id: str, request: Request):
+    client_ip = get_client_ip(request)
+    if not process_rate_limiter.check(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded for email processing. Maximum {RATE_LIMIT_PROCESS_PER_MINUTE} requests per minute."
+        )
+
     try:
         email = get_sample_email(email_id)
     except ValueError:
@@ -298,9 +313,6 @@ def get_status(thread_id: str):
 @app.get("/api/corrections")
 def get_corrections():
     return [c.model_dump() for c in feedback_store.get_all_corrections()]
-
-class TriageRequest(BaseModel):
-    email_ids: list[str] = []  # Empty = triage all sample emails
 
 # In-memory storage for batch triage jobs
 triage_jobs: dict[str, dict] = {}
@@ -395,13 +407,24 @@ async def _process_triage_job(job_id: str, target_ids: list[str]):
 
 
 @app.post("/api/triage-all", status_code=202)
-async def triage_all_emails(background_tasks: BackgroundTasks, req: TriageRequest = TriageRequest()):
+async def triage_all_emails(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    req: TriageRequest = TriageRequest()
+):
     """
     Batch auto-triage: process multiple emails through the LangGraph pipeline.
     Runs in the background and returns a job_id for polling.
     """
     from app.config import TRIAGE_DELAY_SECONDS
     from app.intake_filter import check_spam
+
+    client_ip = get_client_ip(request)
+    if not triage_rate_limiter.check(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded for batch triage. Maximum {RATE_LIMIT_TRIAGE_PER_MINUTE} requests per minute."
+        )
 
     MAX_TRIAGE_EMAILS = 50
     if len(req.email_ids) > MAX_TRIAGE_EMAILS:
@@ -437,9 +460,7 @@ def health():
 
 # ── Knowledge Base (RAG) Endpoints ──────────────────────────────────────────
 
-class TestQueryRequest(BaseModel):
-    query: str
-    top_k: int = 2
+MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 @app.get("/api/knowledge/status")
 def get_knowledge_status():
@@ -454,16 +475,27 @@ def list_knowledge_documents():
 @app.get("/api/knowledge/chunks")
 def list_knowledge_chunks(filename: Optional[str] = None):
     """List all indexed chunks with optional filename filter."""
-    return author_knowledge_base.get_all_chunks(filename)
+    safe_filename = os.path.basename(filename).strip() if filename else None
+    return author_knowledge_base.get_all_chunks(safe_filename)
 
 @app.post("/api/knowledge/upload", status_code=201)
-async def upload_knowledge_document(file: UploadFile = File(...)):
+async def upload_knowledge_document(request: Request, file: UploadFile = File(...)):
     """
     Upload a PDF, TXT, or MD document into the RAG knowledge base.
     Parses, chunks, and indexes it into ChromaDB.
     """
+    client_ip = get_client_ip(request)
+    if not upload_rate_limiter.check(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded for document uploads. Maximum {RATE_LIMIT_UPLOAD_PER_MINUTE} uploads per minute."
+        )
+
     allowed_extensions = {".pdf", ".txt", ".md"}
-    filename = file.filename or "uploaded_document.pdf"
+    raw_filename = file.filename or "uploaded_document.pdf"
+    filename = os.path.basename(raw_filename).strip()
+    if not filename:
+        filename = "uploaded_document.pdf"
     ext = os.path.splitext(filename)[1].lower()
 
     if ext not in allowed_extensions:
@@ -476,6 +508,11 @@ async def upload_knowledge_document(file: UploadFile = File(...)):
         content = await file.read()
         if len(content) == 0:
             raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+        if len(content) > MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="File size exceeds the 10MB maximum limit."
+            )
 
         if ext == ".pdf":
             text = extract_text_from_pdf_bytes(content)
@@ -511,16 +548,19 @@ async def upload_knowledge_document(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"[KB UPLOAD ERROR] {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to process document: {str(e)}")
+        logging.error(f"[KB UPLOAD ERROR] {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to process uploaded document.")
 
 @app.delete("/api/knowledge/documents/{filename}")
 def delete_knowledge_document(filename: str):
     """Delete all chunks for a specific document."""
-    deleted_count = author_knowledge_base.delete_document(filename)
+    safe_filename = os.path.basename(filename).strip()
+    if not safe_filename:
+        raise HTTPException(status_code=400, detail="Valid filename is required.")
+    deleted_count = author_knowledge_base.delete_document(safe_filename)
     return {
         "success": True,
-        "filename": filename,
+        "filename": safe_filename,
         "deleted_chunks": deleted_count,
         "status": author_knowledge_base.get_status()
     }
