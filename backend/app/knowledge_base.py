@@ -39,7 +39,7 @@ class AuthorKnowledgeBase:
             self._init_chroma_client()
             self._sync_registry_from_chroma()
             if self.auto_seed and self.collection and self.collection.count() == 0:
-                self._auto_seed_default_handbook()
+                threading.Thread(target=self._auto_seed_default_handbook, daemon=True).start()
 
     def _init_chroma_client(self):
         """Initialize ChromaDB client."""

@@ -28,8 +28,8 @@ RUN mkdir -p /app/data
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+# Health check with realistic start period for cloud container cold-starts
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:${PORT}/api/health || exit 1
 
 # Start Uvicorn bound to 0.0.0.0 and dynamic $PORT
