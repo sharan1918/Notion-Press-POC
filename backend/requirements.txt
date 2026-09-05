@@ -40,7 +40,9 @@ certifi==2026.7.22
 cffi==2.1.1
     # via cryptography
 charset-normalizer==3.5.1
-    # via requests
+    # via
+    #   reportlab
+    #   requests
 chromadb==1.5.9
     # via -r requirements.in
 click==8.5.0
@@ -216,6 +218,8 @@ packaging==26.3
     #   langsmith
     #   onnxruntime
     #   pytest
+pillow==12.3.0
+    # via reportlab
 pluggy==1.6.0
     # via pytest
 propcache==0.5.2
@@ -255,6 +259,8 @@ pygments==2.21.0
     # via
     #   pytest
     #   rich
+pypdf==6.17.0
+    # via -r requirements.in
 pypika==0.51.1
     # via chromadb
 pyproject-hooks==1.2.0
@@ -268,6 +274,8 @@ python-dotenv==1.2.3
     #   -r requirements.in
     #   pydantic-settings
     #   uvicorn
+python-multipart==0.0.32
+    # via -r requirements.in
 pyyaml==6.0.3
     # via
     #   chromadb
@@ -279,6 +287,8 @@ referencing==0.37.0
     # via
     #   jsonschema
     #   jsonschema-specifications
+reportlab==5.0.1
+    # via -r requirements.in
 requests==2.34.2
     # via
     #   google-auth

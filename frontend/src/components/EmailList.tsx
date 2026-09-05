@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Email, ProcessingResponse } from "../types";
 
 interface Props {
@@ -27,6 +27,31 @@ function getAvatarColor(name: string) {
   return avatarColors[hash % avatarColors.length];
 }
 
+function formatEmailDate(dateStr: string) {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+
+    const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+    if (isToday) {
+      return timeStr;
+    }
+    if (isYesterday) {
+      return `Yesterday, ${timeStr}`;
+    }
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  } catch {
+    return dateStr;
+  }
+}
+
 export default function EmailList({ emails, selectedEmailId, onSelect, processingState, streamingIds, onOpenCompose }: Props) {
   const [tab, setTab] = useState<"focused" | "archive">("focused");
   const [search, setSearch] = useState("");
@@ -44,6 +69,35 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "sender">("newest");
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
+
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close menus on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target as Node)) {
+        setShowFilterMenu(false);
+      }
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target as Node)) {
+        setShowSortMenu(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowFilterMenu(false);
+        setShowSortMenu(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   const filteredEmails = emails.filter(email => {
     const matchesSearch = email.sender_name.toLowerCase().includes(search.toLowerCase()) || 
@@ -103,7 +157,7 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
             >
               <span>📦 Archive</span>
               {archivedCount > 0 && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-500 font-mono font-bold">
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 font-mono font-bold">
                   {archivedCount}
                 </span>
               )}
@@ -112,7 +166,7 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
 
           <div className="flex items-center gap-1 text-muted-foreground text-xs relative">
             {/* Filter Button & Menu */}
-            <div className="relative">
+            <div ref={filterMenuRef} className="relative">
               <button
                 onClick={() => {
                   setShowFilterMenu(!showFilterMenu);
@@ -127,7 +181,7 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
               </button>
 
               {showFilterMenu && (
-                <div className="absolute right-0 top-full mt-1.5 z-50 w-36 bg-popover border border-border rounded-lg shadow-lg py-1 text-xs">
+                <div className="absolute right-0 top-full mt-1.5 z-50 w-36 bg-popover border border-border rounded-lg shadow-lg py-1 text-xs animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-2.5 py-1 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
                     Filter By
                   </div>
@@ -163,7 +217,7 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
             </div>
 
             {/* Sort Button & Menu */}
-            <div className="relative">
+            <div ref={sortMenuRef} className="relative">
               <button
                 onClick={() => {
                   setShowSortMenu(!showSortMenu);
@@ -178,7 +232,7 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
               </button>
 
               {showSortMenu && (
-                <div className="absolute right-0 top-full mt-1.5 z-50 w-36 bg-popover border border-border rounded-lg shadow-lg py-1 text-xs">
+                <div className="absolute right-0 top-full mt-1.5 z-50 w-36 bg-popover border border-border rounded-lg shadow-lg py-1 text-xs animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-2.5 py-1 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
                     Sort By
                   </div>
@@ -291,7 +345,7 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
                     {email.sender_name}
                   </span>
                   <span className="text-[10px] text-muted-foreground font-mono shrink-0">
-                    {new Date(email.timestamp).toLocaleDateString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+                    {formatEmailDate(email.timestamp)}
                   </span>
                 </div>
 
@@ -299,7 +353,7 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
                 <div className="text-xs truncate text-foreground mb-0.5 font-medium leading-snug flex items-center gap-1.5">
                   <span className="truncate">{email.subject}</span>
                   {isSpam && (
-                    <span className="text-[9px] font-mono uppercase px-1 py-0.2 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 shrink-0">
+                    <span className="text-[9px] font-mono uppercase px-1 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 shrink-0">
                       Archived
                     </span>
                   )}

@@ -4,6 +4,7 @@ import EmailList from "./components/EmailList";
 import EmailDetail from "./components/EmailDetail";
 import PipelineView from "./components/PipelineView";
 import ComposeEmailModal from "./components/ComposeEmailModal";
+import KnowledgeBaseModal from "./components/KnowledgeBaseModal";
 import type { Email, ProcessingResponse } from "./types";
 import { 
   getEmails, 
@@ -20,6 +21,7 @@ export default function App() {
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [processingState, setProcessingState] = useState<Record<string, ProcessingResponse>>({});
   const [streamingIds, setStreamingIds] = useState<Set<string>>(new Set());
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState(false);
   const abortControllersRef = useRef<Record<string, () => void>>({});
 
   const startStreaming = useCallback((id: string, force: boolean = false) => {
@@ -200,7 +202,9 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen h-[100dvh] w-full bg-background text-foreground overflow-hidden transition-colors duration-300">
-      <Header />
+      <Header 
+        onOpenKnowledgeBase={() => setIsKnowledgeBaseOpen(true)}
+      />
       
       {/* Main Content Area: Responsive Mobile Stack / Desktop Multi-Column */}
       <div className="flex flex-1 w-full overflow-hidden relative">
@@ -279,6 +283,12 @@ export default function App() {
         onClose={() => setIsComposeOpen(false)}
         onEmailCreated={handleEmailCreated}
       />
+
+      <KnowledgeBaseModal
+        isOpen={isKnowledgeBaseOpen}
+        onClose={() => setIsKnowledgeBaseOpen(false)}
+      />
     </div>
   );
 }
+

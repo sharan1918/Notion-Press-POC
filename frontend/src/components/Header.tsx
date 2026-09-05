@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
 
-export default function Header() {
+interface HeaderProps {
+  onOpenKnowledgeBase?: () => void;
+}
+
+export default function Header({
+  onOpenKnowledgeBase,
+}: HeaderProps) {
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") === "dark" || 
       (!("theme" in localStorage) && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -35,6 +41,32 @@ export default function Header() {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2 shrink-0">
+        {/* Knowledge Base Button */}
+        <button
+          onClick={onOpenKnowledgeBase}
+          className="group px-2.5 py-1.5 bg-secondary/80 hover:bg-secondary text-secondary-foreground rounded-lg transition-all cursor-pointer border border-border hover:border-border/80 flex items-center gap-1.5 text-xs font-medium shadow-xs"
+          title="Manage RAG Knowledge Base & Policy PDFs"
+        >
+          {/* Professional Book/Library SVG Icon */}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="13.5"
+            height="13.5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="shrink-0 text-muted-foreground group-hover:text-foreground transition-colors"
+          >
+            <path d="M12 7v14" />
+            <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
+          </svg>
+          <span className="hidden sm:inline tracking-tight text-foreground font-semibold">Knowledge Base</span>
+        </button>
+
+        {/* Theme Toggle Button */}
         <button
           onClick={() => setIsDark(!isDark)}
           className="px-2.5 py-1.5 bg-secondary/80 hover:bg-secondary text-secondary-foreground rounded-lg transition-colors cursor-pointer shrink-0 border border-border flex items-center gap-1.5 text-xs font-medium shadow-xs"
@@ -65,3 +97,4 @@ export default function Header() {
     </header>
   );
 }
+

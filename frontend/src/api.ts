@@ -161,10 +161,10 @@ export async function triageAllEmails(
     return data;
   }
 
-  // Poll for job updates progressively
+  // Poll for job updates progressively in real time as each email finishes
   const jobId = data.job_id;
-  const pollInterval = 1000;
-  const maxAttempts = 90; // up to 90 seconds
+  const pollInterval = 400; // 400ms for snappy per-email UI updates
+  const maxAttempts = 200; // up to 80 seconds
   
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise(resolve => setTimeout(resolve, pollInterval));
@@ -186,4 +186,130 @@ export async function triageAllEmails(
   }
 
   return {};
+}
+
+// ── Knowledge Base (RAG) APIs ──────────────────────────────────────────────
+
+export interface KnowledgeDocument {
+  filename: string;
+  chunk_count: number;
+  uploaded_at: string;
+}
+
+export interface KnowledgeStatus {
+  total_documents: number;
+  total_chunks: number;
+  documents: KnowledgeDocument[];
+  chroma_connected: boolean;
+}
+
+export interface KnowledgeChunk {
+  id: string;
+  content: string;
+  title: string;
+  filename: string;
+  intent: string;
+}
+
+export interface KnowledgeQueryResult {
+  title: string;
+  intent: string;
+  filename: string;
+  content: string;
+  similarity_score: number;
+}
+
+export async function getKnowledgeStatus(): Promise<KnowledgeStatus> {
+  const res = await fetch(`${BASE}/knowledge/status`);
+  if (!res.ok) throw new Error("Failed to fetch knowledge base status");
+  return res.json();
+}
+
+export async function getKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
+  const res = await fetch(`${BASE}/knowledge/documents`);
+  if (!res.ok) throw new Error("Failed to list knowledge documents");
+  return res.json();
+}
+
+export async function getKnowledgeChunks(filename?: string): Promise<KnowledgeChunk[]> {
+  const url = filename ? `${BASE}/knowledge/chunks?filename=${encodeURIComponent(filename)}` : `${BASE}/knowledge/chunks`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch knowledge chunks");
+  return res.json();
+}
+
+export async function uploadKnowledgeDocument(file: File): Promise<{
+  success: boolean;
+  filename: string;
+  chunks_indexed: number;
+  chunks: Array<{ title: string; intent: string; preview: string }>;
+}> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${BASE}/knowledge/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Upload failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteKnowledgeDocument(filename: string): Promise<{
+  success: boolean;
+  deleted_chunks: number;
+  status: KnowledgeStatus;
+}> {
+  const res = await fetch(`${BASE}/knowledge/documents/${encodeURIComponent(filename)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete knowledge document");
+  return res.json();
+}
+
+export async function clearKnowledgeBase(): Promise<{
+  success: boolean;
+  cleared_chunks: number;
+  status: KnowledgeStatus;
+}> {
+  const res = await fetch(`${BASE}/knowledge/clear`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to clear knowledge base");
+  return res.json();
+}
+
+export async function quickSeedSamplePdf(): Promise<{
+  success: boolean;
+  filename: string;
+  chunks_indexed: number;
+  status: KnowledgeStatus;
+}> {
+  const res = await fetch(`${BASE}/knowledge/quick-seed-sample`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to quick-seed sample PDF");
+  return res.json();
+}
+
+export async function testKnowledgeQuery(query: string, top_k: number = 2): Promise<{
+  query: string;
+  results_count: number;
+  results: KnowledgeQueryResult[];
+}> {
+  const res = await fetch(`${BASE}/knowledge/test-query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, top_k }),
+  });
+  if (!res.ok) throw new Error("Failed to execute test query");
+  return res.json();
+}
+
+export function getSamplePdfDownloadUrl(): string {
+  return `${BASE}/knowledge/sample-pdf`;
 }

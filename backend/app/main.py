@@ -7,8 +7,8 @@ import time
 import threading
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Header
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Header, UploadFile, File
+from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 import logging
@@ -23,6 +23,8 @@ load_dotenv(override=True)
 from app.sample_emails import SAMPLE_EMAILS, get_sample_email, get_all_emails, add_custom_email
 from app.graph import create_graph
 from app.feedback_store import feedback_store
+from app.knowledge_base import author_knowledge_base
+from app.pdf_parser import extract_text_from_pdf_bytes, chunk_document_text
 from app.config import API_AUTH_KEY, RATE_LIMIT_EMAILS_PER_MINUTE
 
 
@@ -304,91 +306,92 @@ class TriageRequest(BaseModel):
 triage_jobs: dict[str, dict] = {}
 
 async def _process_triage_job(job_id: str, target_ids: list[str]):
-    """Background task to process emails."""
-    from app.config import TRIAGE_DELAY_SECONDS
+    """Background task to process emails concurrently with real-time progressive result streaming."""
+    from app.config import TRIAGE_CONCURRENCY, TRIAGE_DELAY_SECONDS
     from app.intake_filter import check_spam
     from app.graph import intent_cache
     
-    results = {}
-    llm_call_count = 0
-    triage_jobs[job_id]["status"] = "processing"
+    if job_id not in triage_jobs:
+        triage_jobs[job_id] = {"status": "processing", "total": len(target_ids), "results": {}}
+    else:
+        triage_jobs[job_id]["status"] = "processing"
+        if "results" not in triage_jobs[job_id]:
+            triage_jobs[job_id]["results"] = {}
 
-    for email_id in target_ids:
-        try:
-            email = get_sample_email(email_id)
-        except ValueError:
-            results[email_id] = {"error": "unknown_email_id"}
-            continue
+    sem = asyncio.Semaphore(TRIAGE_CONCURRENCY)
 
-        thread_id = f"thread_{email_id}_{uuid.uuid4().hex[:12]}"
-        config = {"configurable": {"thread_id": thread_id}}
-        initial_state = {"email": email}
+    async def _triage_single(email_id: str):
+        async with sem:
+            try:
+                email = get_sample_email(email_id)
+            except ValueError:
+                triage_jobs[job_id]["results"][email_id] = {"error": "unknown_email_id"}
+                return
 
-        # Predict if LLM will be used by checking fast-paths
-        pre_spam_check = check_spam(email)
-        is_deterministic_spam = pre_spam_check.outcome == "spam_filtered"
-        
-        is_cache_hit = False
-        if not is_deterministic_spam:
-            cache_result = intent_cache.get_cached_classification(email)
-            if cache_result and cache_result.outcome == "cache_hit":
-                is_cache_hit = True
+            thread_id = f"thread_{email_id}_{uuid.uuid4().hex[:12]}"
+            config = {"configurable": {"thread_id": thread_id}}
+            initial_state = {"email": email}
 
-        uses_llm = not (is_deterministic_spam or is_cache_hit)
+            # Predict if LLM will be used by checking fast-paths
+            pre_spam_check = check_spam(email)
+            is_deterministic_spam = pre_spam_check.outcome == "spam_filtered"
+            
+            is_cache_hit = False
+            if not is_deterministic_spam:
+                cache_result = intent_cache.get_cached_classification(email)
+                if cache_result and cache_result.outcome == "cache_hit":
+                    is_cache_hit = True
 
-        # Add delay between actual LLM calls
-        if llm_call_count > 0 and uses_llm:
-            await asyncio.sleep(TRIAGE_DELAY_SECONDS)
+            uses_llm = not (is_deterministic_spam or is_cache_hit)
 
-        loop = asyncio.get_running_loop()
-        try:
-            # Add timeout to prevent hanging threads (30s)
-            result = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: graph.invoke(initial_state, config)),
-                timeout=30.0
-            )
-            serialized = serialize_state(result)
-            results[email_id] = {"thread_id": thread_id, "state": serialized}
+            if uses_llm and TRIAGE_DELAY_SECONDS > 0:
+                await asyncio.sleep(TRIAGE_DELAY_SECONDS)
 
-            intake = serialized.get("intake_result")
-            logging.info(
-                f"[TRIAGE] {email.sender_name}: {email.subject} → "
-                f"{serialized.get('final_status', '?')} "
-                f"(intake={intake or 'full_pipeline'})"
-            )
+            loop = asyncio.get_running_loop()
+            try:
+                # Add timeout to prevent hanging threads (30s)
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: graph.invoke(initial_state, config)),
+                    timeout=30.0
+                )
+                serialized = serialize_state(result)
+                email_result = {"thread_id": thread_id, "state": serialized}
+                # Immediately publish this result so polling frontend updates in real-time
+                triage_jobs[job_id]["results"][email_id] = email_result
 
-            if uses_llm:
-                llm_call_count += 1
+                intake = serialized.get("intake_result")
+                logging.info(
+                    f"[TRIAGE] {email.sender_name}: {email.subject} → "
+                    f"{serialized.get('final_status', '?')} "
+                    f"(intake={intake or 'full_pipeline'})"
+                )
 
-        except TimeoutError:
-            logging.error(f"[TRIAGE ERROR] {email_id}: LangGraph invoke timed out after 30s")
-            results[email_id] = {
-                "thread_id": thread_id,
-                "error": "timeout",
-                "state": {
-                    "email": email.model_dump(),
-                    "final_status": "error",
-                    "processing_log": ["Triage error: LangGraph execution timed out"],
-                },
-            }
-            if uses_llm:
-                llm_call_count += 1
-        except Exception as e:
-            logging.error(f"[TRIAGE ERROR] {email_id}: {e}")
-            results[email_id] = {
-                "thread_id": thread_id,
-                "error": str(e),
-                "state": {
-                    "email": email.model_dump(),
-                    "final_status": "error",
-                    "processing_log": [f"Triage error: {str(e)}"],
-                },
-            }
-            if uses_llm:
-                llm_call_count += 1
+            except TimeoutError:
+                logging.error(f"[TRIAGE ERROR] {email_id}: LangGraph invoke timed out after 30s")
+                triage_jobs[job_id]["results"][email_id] = {
+                    "thread_id": thread_id,
+                    "error": "timeout",
+                    "state": {
+                        "email": email.model_dump(),
+                        "final_status": "error",
+                        "processing_log": ["Triage error: LangGraph execution timed out"],
+                    },
+                }
+            except Exception as e:
+                logging.error(f"[TRIAGE ERROR] {email_id}: {e}")
+                triage_jobs[job_id]["results"][email_id] = {
+                    "thread_id": thread_id,
+                    "error": str(e),
+                    "state": {
+                        "email": email.model_dump(),
+                        "final_status": "error",
+                        "processing_log": [f"Triage error: {str(e)}"],
+                    },
+                }
 
+    # Execute all email triage tasks concurrently with semaphore concurrency control
+    await asyncio.gather(*(_triage_single(eid) for eid in target_ids))
     triage_jobs[job_id]["status"] = "completed"
-    triage_jobs[job_id]["results"] = results
 
 
 @app.post("/api/triage-all", status_code=202)
@@ -430,4 +433,155 @@ def get_triage_status(job_id: str):
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# ── Knowledge Base (RAG) Endpoints ──────────────────────────────────────────
+
+class TestQueryRequest(BaseModel):
+    query: str
+    top_k: int = 2
+
+@app.get("/api/knowledge/status")
+def get_knowledge_status():
+    """Get high-level status of the ChromaDB knowledge base."""
+    return author_knowledge_base.get_status()
+
+@app.get("/api/knowledge/documents")
+def list_knowledge_documents():
+    """List all indexed documents and chunk counts."""
+    return author_knowledge_base.list_documents()
+
+@app.get("/api/knowledge/chunks")
+def list_knowledge_chunks(filename: Optional[str] = None):
+    """List all indexed chunks with optional filename filter."""
+    return author_knowledge_base.get_all_chunks(filename)
+
+@app.post("/api/knowledge/upload", status_code=201)
+async def upload_knowledge_document(file: UploadFile = File(...)):
+    """
+    Upload a PDF, TXT, or MD document into the RAG knowledge base.
+    Parses, chunks, and indexes it into ChromaDB.
+    """
+    allowed_extensions = {".pdf", ".txt", ".md"}
+    filename = file.filename or "uploaded_document.pdf"
+    ext = os.path.splitext(filename)[1].lower()
+
+    if ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format '{ext}'. Only .pdf, .txt, and .md files are supported."
+        )
+
+    try:
+        content = await file.read()
+        if len(content) == 0:
+            raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+
+        if ext == ".pdf":
+            text = extract_text_from_pdf_bytes(content)
+        else:
+            text = content.decode("utf-8", errors="ignore")
+
+        if not text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Could not extract readable text from the uploaded file. Please ensure the PDF is not a scanned image."
+            )
+
+        chunks = chunk_document_text(text, filename)
+        if not chunks:
+            raise HTTPException(status_code=400, detail="Could not create semantic chunks from the document.")
+
+        indexed_count = author_knowledge_base.add_document_chunks(filename, chunks)
+        
+        return {
+            "success": True,
+            "filename": filename,
+            "chunks_indexed": indexed_count,
+            "total_documents": len(author_knowledge_base.list_documents()),
+            "chunks": [
+                {
+                    "title": c["title"],
+                    "intent": c["intent"],
+                    "preview": c["content"][:150] + "..." if len(c["content"]) > 150 else c["content"]
+                }
+                for c in chunks
+            ]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"[KB UPLOAD ERROR] {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process document: {str(e)}")
+
+@app.delete("/api/knowledge/documents/{filename}")
+def delete_knowledge_document(filename: str):
+    """Delete all chunks for a specific document."""
+    deleted_count = author_knowledge_base.delete_document(filename)
+    return {
+        "success": True,
+        "filename": filename,
+        "deleted_chunks": deleted_count,
+        "status": author_knowledge_base.get_status()
+    }
+
+@app.delete("/api/knowledge/clear")
+def clear_knowledge_base():
+    """Clear all documents from the knowledge base."""
+    cleared_count = author_knowledge_base.clear_all()
+    return {
+        "success": True,
+        "cleared_chunks": cleared_count,
+        "status": author_knowledge_base.get_status()
+    }
+
+@app.get("/api/knowledge/sample-pdf")
+def download_sample_pdf():
+    """Download the official Notion Press Author Publishing Policy Handbook PDF."""
+    pdf_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "sample_docs", "Notion_Press_Author_Publishing_Policy_Handbook.pdf")
+    )
+    if not os.path.exists(pdf_path):
+        from scripts.generate_sample_pdf import generate_handbook
+        generate_handbook(pdf_path)
+
+    return FileResponse(
+        path=pdf_path,
+        media_type="application/pdf",
+        filename="Notion_Press_Author_Publishing_Policy_Handbook.pdf"
+    )
+
+@app.post("/api/knowledge/quick-seed-sample")
+def quick_seed_sample_pdf():
+    """One-click server ingestion of the Notion Press Author Publishing Policy Handbook PDF."""
+    pdf_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "sample_docs", "Notion_Press_Author_Publishing_Policy_Handbook.pdf")
+    )
+    if not os.path.exists(pdf_path):
+        from scripts.generate_sample_pdf import generate_handbook
+        generate_handbook(pdf_path)
+
+    with open(pdf_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    text = extract_text_from_pdf_bytes(pdf_bytes)
+    chunks = chunk_document_text(text, "Notion_Press_Author_Publishing_Policy_Handbook.pdf")
+    indexed_count = author_knowledge_base.add_document_chunks("Notion_Press_Author_Publishing_Policy_Handbook.pdf", chunks)
+
+    return {
+        "success": True,
+        "filename": "Notion_Press_Author_Publishing_Policy_Handbook.pdf",
+        "chunks_indexed": indexed_count,
+        "status": author_knowledge_base.get_status()
+    }
+
+@app.post("/api/knowledge/test-query")
+def test_knowledge_query(req: TestQueryRequest):
+    """Test RAG retrieval matching for a query text."""
+    results = author_knowledge_base.query_knowledge(query_text=req.query, top_k=req.top_k)
+    return {
+        "query": req.query,
+        "results_count": len(results),
+        "results": results
+    }
 

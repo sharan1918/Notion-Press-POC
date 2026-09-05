@@ -9,3 +9,6 @@ python-dotenv
 pytest
 httpx
 chromadb
+pypdf
+reportlab
+python-multipart
