@@ -99,6 +99,7 @@ The system uses a single AI decision component orchestrated by a stateful LangGr
 
 - 📝 **[Design Decisions, Limitations & Roadmap](docs/DESIGN_DECISIONS_AND_LIMITATIONS.md)**: Dedicated assessment deliverable detailing core decisions, invariants, current limitations, and production upgrades.
 - 📐 **[System Design & Architecture](docs/SYSTEM_DESIGN.md)**: Detailed breakdown of design decisions, multi-provider failover, HITL states, and production roadmap.
+- 🧪 **[Sample Test Cases & Evaluation Scenarios](#-sample-test-cases--evaluation-scenarios)**: 10 realistic author scenarios in the mock inbox + 74 automated unit tests in `pytest`.
 
 ## 🚀 Quick Start
 
@@ -118,6 +119,32 @@ The system uses a single AI decision component orchestrated by a stateful LangGr
    npm run dev
    ```
 4. **Open** `http://localhost:5173`
+
+## 🧪 Sample Test Cases & Evaluation Scenarios
+
+The system includes both interactive scenario evaluation emails and a complete automated regression test suite:
+
+### 1. Preloaded Scenario Test Emails (Mock Inbox)
+The interactive inbox is pre-seeded with 10 realistic author scenarios covering the assessment requirements:
+- **Missing Information & Anti-Hallucination**: Inquiries lacking critical identifiers (e.g., missing ISBN or order ID) trigger `request_missing_info` without fabricating details.
+- **High-Impact Guardrails**: High-value refund requests (> ₹1,000) and legal disputes automatically enforce supervisor sign-off (`requires_human_approval = True`), overriding the LLM.
+- **Human-in-the-Loop Feedback Loop**: Correcting an email in the UI stores the exemplar in ChromaDB, allowing future similar emails to benefit immediately via few-shot retrieval.
+- **Spam & Fast-Path Intake**: Commercial SEO spam is quarantined at $0 token cost in ~1ms without LLM invocation.
+- **Multi-Intent Edge Cases**: Complex multi-issue author emails (royalty discrepancy + distribution out of stock).
+
+### 2. Automated Unit Tests (74 Tests, 100% Passing)
+Run the full test suite via `uv`:
+```bash
+cd backend
+uv run pytest
+```
+- `test_graph.py`: LangGraph state machine routing, guardrail overrides, and interrupts.
+- `test_feedback_store.py`: ChromaDB few-shot learning and human correction persistence.
+- `test_intake_filter.py`: Heuristic spam triage and priority categorization.
+- `test_security.py`: Prompt injection defenses and rate limiting.
+- `test_intent_cache.py`: Cosine similarity semantic caching.
+- `test_knowledge_base.py`: Notion Press policy grounding and retrieval.
+- `test_main.py`: FastAPI endpoints and SSE streaming.
 
 ## 🛡️ Reliability & Agent Harness (Production Considerations)
 
