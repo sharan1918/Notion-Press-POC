@@ -11,16 +11,17 @@ from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Header, Up
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-import sys
 import logging
 from typing import Optional
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 load_dotenv(override=True)
 
-from app.sample_emails import SAMPLE_EMAILS, get_sample_email, get_all_emails, add_custom_email
+from app.sample_emails import get_sample_email, get_all_emails, add_custom_email
 from app.graph import create_graph
 from app.feedback_store import feedback_store
 from app.knowledge_base import author_knowledge_base
@@ -72,6 +73,10 @@ def serialize_state(state: dict) -> dict:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global checkpointer, graph
+    from app.chroma_client import get_shared_embedding_function
+    active_ef = get_shared_embedding_function().get_active_model_name()
+    print(f"[Startup] Active Embedding Engine: {active_ef}", flush=True)
+    logger.info(f"Active Embedding Engine: {active_ef}")
     with SqliteSaver.from_conn_string("data/checkpoints.sqlite") as saver:
         checkpointer = saver
         builder = create_graph()
@@ -529,6 +534,10 @@ async def upload_knowledge_document(request: Request, file: UploadFile = File(..
         if not chunks:
             raise HTTPException(status_code=400, detail="Could not create semantic chunks from the document.")
 
+        from app.chroma_client import get_shared_embedding_function
+        active_ef = get_shared_embedding_function().get_active_model_name()
+        print(f"[KB Upload] Indexing {len(chunks)} chunk(s) from '{filename}' using embedding model: {active_ef}", flush=True)
+        logger.info(f"[KB Upload] Indexing {len(chunks)} chunk(s) from '{filename}' using embedding model: {active_ef}")
         indexed_count = author_knowledge_base.add_document_chunks(filename, chunks)
         
         return {
@@ -617,6 +626,10 @@ def quick_seed_sample_pdf():
 
     text = extract_text_from_pdf_bytes(pdf_bytes)
     chunks = chunk_document_text(text, "Notion_Press_Author_Publishing_Policy_Handbook.pdf")
+    from app.chroma_client import get_shared_embedding_function
+    active_ef = get_shared_embedding_function().get_active_model_name()
+    print(f"[KB Quick-Seed] Indexing handbook using embedding model: {active_ef}", flush=True)
+    logger.info(f"[KB Quick-Seed] Indexing handbook using embedding model: {active_ef}")
     indexed_count = author_knowledge_base.add_document_chunks("Notion_Press_Author_Publishing_Policy_Handbook.pdf", chunks)
 
     return {
@@ -629,6 +642,10 @@ def quick_seed_sample_pdf():
 @app.post("/api/knowledge/test-query")
 def test_knowledge_query(req: TestQueryRequest):
     """Test RAG retrieval matching for a query text."""
+    from app.chroma_client import get_shared_embedding_function
+    active_ef = get_shared_embedding_function().get_active_model_name()
+    print(f"[KB Test-Query] Querying knowledge base using embedding model: {active_ef} (query='{req.query}')", flush=True)
+    logger.info(f"[KB Test-Query] Querying knowledge base using embedding model: {active_ef}")
     results = author_knowledge_base.query_knowledge(query_text=req.query, top_k=req.top_k)
     return {
         "query": req.query,

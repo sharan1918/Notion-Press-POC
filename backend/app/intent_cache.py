@@ -16,10 +16,8 @@ import logging
 import json
 from typing import Optional
 
-import chromadb
-from chromadb.config import Settings
-
-from app.models import Email, EmailClassification, FastPathResult, RecommendedAction
+from app.chroma_client import get_shared_chroma_client, get_or_create_resilient_collection
+from app.models import Email, EmailClassification, FastPathResult
 from app.config import INTENT_CACHE_SIMILARITY_THRESHOLD
 
 logger = logging.getLogger(__name__)
@@ -51,29 +49,9 @@ class IntentCache:
 
     def _init_client(self):
         """Initialize ChromaDB client and collection."""
-        chroma_host = os.environ.get("CHROMA_HOST")
-        try:
-            chroma_port = int(os.environ.get("CHROMA_PORT", "8000"))
-        except (ValueError, TypeError):
-            chroma_port = 8000
-
-        chroma_ssl = os.environ.get("CHROMA_SSL", "false").lower() == "true"
-
-        if chroma_host:
-            self.client = chromadb.HttpClient(
-                host=chroma_host,
-                port=chroma_port,
-                ssl=chroma_ssl,
-                settings=Settings(anonymized_telemetry=False),
-            )
-        else:
-            os.makedirs(self.persist_directory, exist_ok=True)
-            self.client = chromadb.PersistentClient(
-                path=self.persist_directory,
-                settings=Settings(anonymized_telemetry=False),
-            )
-
-        self.collection = self.client.get_or_create_collection(
+        self.client = get_shared_chroma_client(self.persist_directory)
+        self.collection = get_or_create_resilient_collection(
+            self.client,
             name=self.collection_name,
             metadata={"hnsw:space": "cosine"},
         )
@@ -100,13 +78,15 @@ class IntentCache:
         }
 
         with self.lock:
+            from app.chroma_client import get_shared_embedding_function
+            active_ef = get_shared_embedding_function().get_active_model_name()
             self.collection.upsert(
                 documents=[doc_text],
                 metadatas=[metadata],
                 ids=[doc_id],
             )
         logger.info(
-            f"[CACHE] Stored classification for email '{email.subject}' "
+            f"[CACHE] Stored classification using model: {active_ef} for email '{email.subject}' "
             f"→ intent={classification.intent} (confidence={classification.confidence:.2f})"
         )
 
@@ -126,6 +106,10 @@ class IntentCache:
             total_count = self.collection.count()
             if total_count == 0:
                 return None
+
+            from app.chroma_client import get_shared_embedding_function
+            active_ef = get_shared_embedding_function().get_active_model_name()
+            logger.info(f"[CACHE] Querying semantic intent cache using model: {active_ef}")
 
             try:
                 result = self.collection.query(

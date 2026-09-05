@@ -3,8 +3,7 @@ import os
 import threading
 import logging
 from typing import Optional
-import chromadb
-from chromadb.config import Settings
+from app.chroma_client import get_shared_chroma_client, get_or_create_resilient_collection
 from app.models import HumanCorrection
 
 logger = logging.getLogger(__name__)
@@ -45,27 +44,11 @@ class FeedbackStore:
 
     def _init_chroma_client(self):
         """Initialize local persistent ChromaDB or remote managed Cloud HTTP client."""
-        chroma_host = os.environ.get("CHROMA_HOST")
-        chroma_port = int(os.environ.get("CHROMA_PORT", "8000"))
-        chroma_ssl = os.environ.get("CHROMA_SSL", "false").lower() == "true"
+        self.client = get_shared_chroma_client(self.persist_directory)
 
-        if chroma_host:
-            logger.info(f"Connecting to remote ChromaDB at {chroma_host}:{chroma_port} (ssl={chroma_ssl})")
-            self.client = chromadb.HttpClient(
-                host=chroma_host,
-                port=chroma_port,
-                ssl=chroma_ssl,
-                settings=Settings(anonymized_telemetry=False)
-            )
-        else:
-            os.makedirs(self.persist_directory, exist_ok=True)
-            self.client = chromadb.PersistentClient(
-                path=self.persist_directory,
-                settings=Settings(anonymized_telemetry=False)
-            )
-
-        # Explicit Cosine Metric
-        self.collection = self.client.get_or_create_collection(
+        # Explicit Cosine Metric with Resilient Hybrid Embedding
+        self.collection = get_or_create_resilient_collection(
+            self.client,
             name=self.collection_name,
             metadata={"hnsw:space": "cosine"}
         )
@@ -104,6 +87,10 @@ class FeedbackStore:
             "notes": correction.notes,
             "timestamp": correction.timestamp
         }
+
+        from app.chroma_client import get_shared_embedding_function
+        active_ef = get_shared_embedding_function().get_active_model_name()
+        logger.info(f"[RAG] Indexing correction in ChromaDB using embedding model: {active_ef}")
 
         self.collection.upsert(
             documents=[doc_text],
@@ -152,8 +139,10 @@ class FeedbackStore:
             results: list[HumanCorrection] = []
             seen_keys = set()
             total_count = self.collection.count()
+            from app.chroma_client import get_shared_embedding_function
+            active_ef = get_shared_embedding_function().get_active_model_name()
             logger.info(
-                f"[RAG] Querying vector store | Total stored: {total_count} | Threshold: {threshold:.2f}"
+                f"[RAG] Querying vector store using model: {active_ef} | Total stored: {total_count} | Threshold: {threshold:.2f}"
             )
 
             if query_text and total_count > 0:

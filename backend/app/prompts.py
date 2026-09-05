@@ -1,3 +1,7 @@
+import re
+from typing import Optional
+from langchain_core.prompts.chat import ChatPromptTemplate
+
 SYSTEM_PROMPT = """You are an AI assistant for Notion Press author support triage.
 Your task is to classify incoming emails from authors into one of the following 9 intent categories:
 - royalty_payment: Royalty payouts, payment delays, payout status
@@ -45,7 +49,6 @@ FEW_SHOT_TEMPLATE = """
 {corrections_text}
 """
 
-import re
 
 def sanitize_prompt_input(text: str) -> str:
     """Sanitize untrusted input to prevent delimiter breakout in prompt injection attacks."""
@@ -58,7 +61,7 @@ def sanitize_prompt_input(text: str) -> str:
     return cleaned.strip()
 
 
-def build_prompt(email_subject: str, email_body: str, corrections_text: str = "", supplementary_info: str = "", attachments: list[str] = None) -> str:
+def build_prompt(email_subject: str, email_body: str, corrections_text: str = "", supplementary_info: str = "", attachments: Optional[list[str]] = None) -> str:
     prompt = SYSTEM_PROMPT + "\n"
     if corrections_text:
         prompt += FEW_SHOT_TEMPLATE.format(corrections_text=corrections_text) + "\n"
@@ -82,9 +85,6 @@ def build_prompt(email_subject: str, email_body: str, corrections_text: str = ""
         prompt += f"\n<attachment_proofs>\nAttached files: {', '.join(safe_attachments)}\n</attachment_proofs>\n"
         
     return prompt
-
-
-from langchain_core.prompts import ChatPromptTemplate
 
 RAG_REPLY_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
     (

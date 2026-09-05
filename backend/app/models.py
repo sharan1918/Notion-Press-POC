@@ -169,8 +169,6 @@ class CorrectionRequest(BaseModel):
         return v.strip()
 
 
-import os
-
 class InfoRequest(BaseModel):
     additional_info: str = Field(default="", max_length=10000)
     attachments: list[str] = Field(default_factory=list, max_length=10)

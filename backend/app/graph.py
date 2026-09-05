@@ -1,11 +1,11 @@
 import os
+import logging
 from datetime import datetime
-from pydantic import ValidationError
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import interrupt, Command
+from langgraph.types import interrupt
 
 from langchain_core.output_parsers import StrOutputParser
 
@@ -17,11 +17,10 @@ from app.feedback_store import feedback_store
 from app.intake_filter import check_spam
 from app.intent_cache import intent_cache
 from app.knowledge_base import author_knowledge_base
+from app.chroma_client import get_shared_embedding_function
 from app.utils import extract_content_str
 
 load_dotenv(override=True)
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,7 @@ def get_llms():
     gemini = None
     if _is_valid_api_key(gemini_key):
         try:
-            gemini = ChatGoogleGenerativeAI(model="gemini-3.5-flash", max_retries=1, timeout=30.0)
+            gemini = ChatGoogleGenerativeAI(model="gemini-3.6-flash", max_retries=1, timeout=30.0)
         except Exception as e:
             logger.warning(f"Failed to initialize ChatGoogleGenerativeAI: {e}")
             gemini = None
@@ -93,9 +92,16 @@ def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification
 
 def log(state: dict, message: str):
     timestamp = datetime.now().strftime("%H:%M:%S")
-    state.setdefault("processing_log", []).append(f"[{timestamp}] {message}")
-    print(f"[{timestamp}] {message}", flush=True)
-    logger.info(f"[{timestamp}] {message}")
+    formatted = f"[{timestamp}] {message}"
+    state.setdefault("processing_log", []).append(formatted)
+    try:
+        print(formatted, flush=True)
+    except Exception:
+        try:
+            print(formatted.encode("ascii", errors="replace").decode("ascii"), flush=True)
+        except Exception:
+            pass
+    logger.info(formatted)
 
 def ingest_email(state: EmailProcessingState) -> EmailProcessingState:
     # Initialize basic state consistently across all execution paths
@@ -134,10 +140,11 @@ def intake_filter_node(state: EmailProcessingState) -> EmailProcessingState:
         state["missing_info_block"] = False
         state["final_status"] = "executed"
         log(state, f"⚡ FAST-PATH: Spam detected — {spam_result.reason}")
-        log(state, f"Action: archive (no LLM used, $0.00 cost)")
+        log(state, "Action: archive (no LLM used, $0.00 cost)")
         return state
     
     # ── Layer 2: Semantic intent cache lookup ─────────────────────────────
+    active_ef = get_shared_embedding_function().get_active_model_name()
     cache_result = intent_cache.get_cached_classification(email)
     if cache_result and cache_result.outcome == "cache_hit":
         state["intake_result"] = "cache_hit"
@@ -148,11 +155,11 @@ def intake_filter_node(state: EmailProcessingState) -> EmailProcessingState:
         state["missing_info_block"] = False
         state["final_status"] = "processing"
         log(state, f"💾 CACHE HIT: Reusing classification '{cache_result.classification.intent}' "
-            f"(similarity={cache_result.confidence:.3f}) — no LLM call")
+            f"(similarity={cache_result.confidence:.3f}) via {active_ef} — no LLM call")
         return state
     
     # ── Pass through to full LLM pipeline ─────────────────────────────────
-    log(state, f"Intake filter: passed (spam_score={spam_result.confidence:.2f}, no cache hit). Proceeding to LLM.")
+    log(state, f"Intake filter: passed (spam_score={spam_result.confidence:.2f}, cache miss via {active_ef}). Proceeding to LLM.")
     return state
 
 def route_after_intake(state: EmailProcessingState) -> str:
@@ -171,6 +178,7 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
     prev_classification = state.get("classification")
     predicted_intent = prev_classification.intent if prev_classification else None
     email_query = f"Subject: {email.subject}\nBody: {email.body}"
+    active_ef = get_shared_embedding_function().get_active_model_name()
     corrections = feedback_store.get_relevant_corrections(
         query_text=email_query,
         predicted_intent=predicted_intent
@@ -178,9 +186,9 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
     corrections_text = feedback_store.format_for_prompt(corrections)
     state["corrections"] = corrections_text
     if corrections:
-        log(state, f"RAG: Injected {len(corrections)} relevant historical human correction(s) into prompt")
+        log(state, f"RAG: Injected {len(corrections)} relevant historical human correction(s) into prompt (retrieved via {active_ef})")
     else:
-        log(state, "RAG: No relevant past corrections found above similarity threshold")
+        log(state, f"RAG: No relevant past corrections found above similarity threshold (queried via {active_ef})")
     
     prompt = build_prompt(
         email_subject=email.subject, 
@@ -227,15 +235,16 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
     intent = classification.intent if classification else "general_inquiry"
 
     query_text = f"{email.subject}\n{email.body}"
+    active_ef = get_shared_embedding_function().get_active_model_name()
     retrieved_docs = author_knowledge_base.query_knowledge(query_text=query_text, intent=intent, top_k=2)
 
     if not retrieved_docs:
-        log(state, "[RAG] No matching policy chunks found in knowledge base.")
+        log(state, f"📚 [RAG] No matching policy chunks found in knowledge base (queried via {active_ef}).")
         return state
 
     sources = [doc["title"] for doc in retrieved_docs]
     state["knowledge_sources"] = sources
-    log(state, f"📚 [RAG] Retrieved {len(retrieved_docs)} policy documents: {', '.join(sources)}")
+    log(state, f"📚 [RAG] Retrieved {len(retrieved_docs)} policy documents via {active_ef}: {', '.join(sources)}")
 
     context_str = "\n\n".join([f"### {doc['title']}\n{doc['content']}" for doc in retrieved_docs])
 

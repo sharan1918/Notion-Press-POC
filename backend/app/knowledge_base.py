@@ -3,12 +3,11 @@ import logging
 import threading
 from datetime import datetime
 from typing import Optional
-import chromadb
-from chromadb.config import Settings
+from app.chroma_client import get_shared_chroma_client, get_or_create_resilient_collection
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PERSIST_DIR = "data/chromadb"
+DEFAULT_PERSIST_DIR = os.environ.get("CHROMA_PERSIST_DIR", "data/chroma_db")
 DEFAULT_COLLECTION_NAME = "author_knowledge_base"
 
 
@@ -43,27 +42,10 @@ class AuthorKnowledgeBase:
 
     def _init_chroma_client(self):
         """Initialize ChromaDB client."""
-        chroma_host = os.environ.get("CHROMA_HOST")
-        chroma_port = int(os.environ.get("CHROMA_PORT", "8000"))
-        chroma_ssl = os.environ.get("CHROMA_SSL", "false").lower() == "true"
-
         try:
-            if chroma_host:
-                logger.info(f"[KB] Connecting to remote ChromaDB at {chroma_host}:{chroma_port}")
-                self.client = chromadb.HttpClient(
-                    host=chroma_host,
-                    port=chroma_port,
-                    ssl=chroma_ssl,
-                    settings=Settings(anonymized_telemetry=False),
-                )
-            else:
-                os.makedirs(self.persist_directory, exist_ok=True)
-                self.client = chromadb.PersistentClient(
-                    path=self.persist_directory,
-                    settings=Settings(anonymized_telemetry=False),
-                )
-
-            self.collection = self.client.get_or_create_collection(
+            self.client = get_shared_chroma_client(self.persist_directory)
+            self.collection = get_or_create_resilient_collection(
+                self.client,
                 name=self.collection_name,
                 metadata={"hnsw:space": "cosine"},
             )
@@ -163,6 +145,9 @@ class AuthorKnowledgeBase:
 
             if self.collection:
                 try:
+                    from app.chroma_client import get_shared_embedding_function
+                    active_ef = get_shared_embedding_function().get_active_model_name()
+                    logger.info(f"[KB] Adding {len(documents)} chunk(s) for '{clean_filename}' using embedding model: {active_ef}")
                     self.collection.add(
                         ids=ids,
                         documents=documents,
@@ -320,6 +305,9 @@ class AuthorKnowledgeBase:
             # 1. Attempt ChromaDB Query
             if self.collection:
                 try:
+                    from app.chroma_client import get_shared_embedding_function
+                    active_ef = get_shared_embedding_function().get_active_model_name()
+                    logger.info(f"[KB] Querying knowledge collection using embedding model: {active_ef}")
                     # Try intent-filtered query first if provided
                     query_kwargs = {
                         "query_texts": [query_text],
