@@ -1,11 +1,11 @@
 import os
+import logging
 from datetime import datetime
-from pydantic import ValidationError
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import interrupt, Command
+from langgraph.types import interrupt
 
 from langchain_core.output_parsers import StrOutputParser
 
@@ -20,8 +20,6 @@ from app.knowledge_base import author_knowledge_base
 from app.utils import extract_content_str
 
 load_dotenv(override=True)
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +132,7 @@ def intake_filter_node(state: EmailProcessingState) -> EmailProcessingState:
         state["missing_info_block"] = False
         state["final_status"] = "executed"
         log(state, f"⚡ FAST-PATH: Spam detected — {spam_result.reason}")
-        log(state, f"Action: archive (no LLM used, $0.00 cost)")
+        log(state, "Action: archive (no LLM used, $0.00 cost)")
         return state
     
     # ── Layer 2: Semantic intent cache lookup ─────────────────────────────

@@ -11,16 +11,17 @@ from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Header, Up
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-import sys
 import logging
 from typing import Optional
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 load_dotenv(override=True)
 
-from app.sample_emails import SAMPLE_EMAILS, get_sample_email, get_all_emails, add_custom_email
+from app.sample_emails import get_sample_email, get_all_emails, add_custom_email
 from app.graph import create_graph
 from app.feedback_store import feedback_store
 from app.knowledge_base import author_knowledge_base
