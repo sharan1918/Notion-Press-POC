@@ -30,7 +30,7 @@ flowchart TD
 
     CACHE_CHECK["Semantic Intent Cache<br/>ChromaDB Cosine Embedding"]:::amberBox
 
-    AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.5 Failover"]:::blueBox
+    AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.6 Failover"]:::blueBox
 
     GUARD["[ 5. SAFETY RULES & POLICY ]<br/><b>Deterministic Engine (policy.py)</b><br/>Evaluates Intent, Thresholds & Risk"]:::greenBox
 
@@ -95,7 +95,7 @@ flowchart TD
    Deterministic Filter     Cosine Sim >= 0.90      LangGraph State Machine
    (Spam Domains/Words)     (Reuse Stored Intent)   (fetch_and_classify node)
       Instant Archive         Skip LLM Inference     Groq GPT-OSS-120B (Primary)
-        ($0 / ~1ms)               ($0 / ~5ms)        Gemini 3.5 Flash (Failover)
+        ($0 / ~1ms)               ($0 / ~5ms)        Gemini 3.6 Flash (Failover)
              │                       │               + Few-Shot ChromaDB Vectors
              │                       │                       │
              │                       └───────────┬───────────┘
@@ -175,10 +175,10 @@ flowchart TD
 ---
 
 ### 1.3 Multi-Provider Resilient Failover (Groq Primary + Gemini Fallback)
-* **Decision**: Configured **Groq (`openai/gpt-oss-120b`)** as the primary inference engine with seamless automatic failover to **Google Gemini 3.5 Flash**.
+* **Decision**: Configured **Groq (`openai/gpt-oss-120b`)** as the primary inference engine with seamless automatic failover to **Google Gemini 3.6 Flash**.
 * **Rationale**:
   - **Speed**: Groq delivers ~500 tokens/second, enabling near-instant email triage (~400ms latency).
-  - **Availability**: Free-tier cloud endpoints occasionally suffer from rate limits (`429 Too Many Requests`). If Groq hits a rate limit or timeout, the pipeline catches the error and instantly invokes Gemini 3.5 Flash without crashing the user's workflow.
+  - **Availability**: Free-tier cloud endpoints occasionally suffer from rate limits (`429 Too Many Requests`). If Groq hits a rate limit or timeout, the pipeline catches the error and instantly invokes Gemini 3.6 Flash without crashing the user's workflow.
   - **Consistent Schema**: Both providers strictly honor the identical Pydantic structured output contract (`EmailClassification`).
 
 ---
@@ -204,6 +204,16 @@ flowchart TD
   - **Northflank**: Provides production-grade Docker container execution with continuous GitHub deployment from the `develop` branch, automated health check probes (`/api/health`), dynamic `$PORT` environment binding, and container secret isolation.
   - **Vercel**: Delivers lightning-fast global edge CDN distribution for the React 18 SPA with automatic PR preview deployments.
   - **Security & Cold-Start Resilience**: Backend enforces strict CORS origin access for the Vercel frontend, and automatically initializes and seeds the ChromaDB knowledge base on fresh cloud container boot.
+
+---
+
+### 1.7 Resilient Hybrid Embedding Architecture & Observable Model Logging
+* **Decision**: Implemented `ResilientEmbeddingFunction` (`backend/app/chroma_client.py`) unifying **Google Gemini Cloud Embeddings (`models/gemini-embedding-001`)** with seamless local **ONNX (`all-MiniLM-L6-v2`)** failover.
+* **Rationale**:
+  - **Cloud Compute Offloading**: Heavy local neural network inference on CPU causes memory spikes and thread contention. Gemini Cloud embeddings offload vector computation to Google Cloud TPUs/GPUs with generous quotas (1,500 RPM, $0 cost).
+  - **MRL 384-Dimension Alignment**: Gemini's native 3,072-dim embeddings are truncated to **384 dimensions** using Matryoshka Representation Learning (MRL). This exactly matches ChromaDB's ONNX default (384 dimensions), allowing collections to switch between cloud and local without dimensionality conflict errors.
+  - **Complete Model Observability**: Every embedding generation, semantic cache lookup, feedback exemplar retrieval, and policy RAG search explicitly outputs the active model name into server console logs and the frontend UI's live processing log.
+  - **Parallel Batch Concurrency**: Upgraded background bulk triage to 3 concurrent async workers (`TRIAGE_CONCURRENCY=3`) for rapid inbox evaluation.
 
 ---
 
@@ -243,7 +253,7 @@ While fully functional and feature-complete for the assessment, the current Proo
 | **Email Ingestion** | Curated mock inbox (`sample_emails.py`) and UI compose modal | Incoming emails are simulated in-memory rather than polled from live IMAP/SMTP mailboxes or webhook endpoints. |
 | **Attachment Proofs** | Local memory handling & filename references | File uploads are handled locally in memory rather than uploaded to cloud object storage (e.g. AWS S3 / GCS). |
 | **Access Control (RBAC)**| Uniform interface for all users | No role differentiation between Frontline Support Agents, Senior Leads, and Finance Administrators. |
-| **Batch Concurrency** | In-process sequential triage loop with rate-limit delays | Background triage runs within the FastAPI event loop rather than offloaded to a distributed worker queue (Celery/RabbitMQ). |
+| **Batch Concurrency** | In-process asynchronous triage pool (`TRIAGE_CONCURRENCY = 3`) | Background triage runs within the FastAPI event loop with semaphore concurrency rather than offloaded to a distributed worker queue (Celery/RabbitMQ). |
 
 ---
 

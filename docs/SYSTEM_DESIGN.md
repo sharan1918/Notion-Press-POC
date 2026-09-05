@@ -11,7 +11,9 @@ This document details the architectural decisions, technology stack rationale, s
 | **Orchestration & Workflow** | **LangGraph** (Python) | State-machine based orchestration designed for cyclic workflows, Human-in-the-Loop (`interrupt()` / `Command(resume=...)`), checkpoint serialization, and multi-turn state accumulation. Unlike linear chains (DAGs), LangGraph natively models iterative human feedback loops. |
 | **Checkpointer & Persistence** | **SQLite Saver** (`SqliteSaver`) | Zero-configuration, file-based persistence for conversation threads and execution state snapshots. Allows any workflow to pause indefinitely while waiting for author info or human approval, surviving server restarts. |
 | **Backend API** | **FastAPI** + **Uvicorn** + **SSE** | High-performance asynchronous Python web framework with native async streaming support (`StreamingResponse` for Server-Sent Events), Pydantic validation, and OpenAPI documentation out of the box. |
-| **LLM Tier & Failover** | **Gemini 3.5 Flash** (Primary) + **Groq** (Instant Failover) | **Gemini 3.5 Flash** provides state-of-the-art reasoning and native JSON schema enforcement. **Groq** (`openai/gpt-oss-120b` / `llama-3.3-70b`) provides sub-second inference speeds (~500 tokens/sec) and zero-cost high-throughput fallback when Google quotas are exhausted. |
+| **LLM Tier & Failover** | **Groq** (`openai/gpt-oss-120b`, Primary) + **Gemini 3.6 Flash** (Failover) | **Groq** provides sub-second inference speeds (~500 tokens/sec) and zero-cost high-throughput execution. **Gemini 3.6 Flash** provides state-of-the-art reasoning and native JSON schema enforcement as automatic seamless failover if Groq quotas are exhausted. |
+| **Embedding Tier & Fallback** | **Google Gemini Cloud** (`models/gemini-embedding-001`, Primary) + **Local ONNX** (`all-MiniLM-L6-v2`, Fallback) | Hybrid 384-dimensional vector engine. Primary offloads vectorization to Google Cloud GPUs (1,500 RPM, $0 cost via Matryoshka Representation Learning truncation). Local ONNX takes over automatically if offline or API key absent. Used uniformly across Intent Cache, Few-Shot Feedback, and Policy RAG. |
+| **Vector Storage & Caching** | **ChromaDB** (Singleton PersistentClient) | Cosine space (`hnsw:space: cosine`) vector database providing semantic intent caching, dynamic few-shot exemplar retrieval, and Notion Press policy RAG search. Managed via a thread-safe singleton to eliminate duplicate ONNX runtimes and prevent memory exhaustion. |
 | **Frontend Framework** | **React 18** + **Vite** + **TypeScript** | Lightning-fast HMR build tooling, strong type safety matching backend Pydantic models, component-driven UI for reactive state updates and real-time SSE stream consumption via `AbortController`. |
 | **Styling & Design System** | **Tailwind CSS** + Custom Design Tokens | Modern dark/light mode, sleek typography, subtle micro-animations, glassmorphism cards, and clean visual status indicators (pulsating triage badges, urgency meters, risk chips). |
 | **Cloud Deployment** | **Northflank** (Backend) + **Vercel** (Frontend) | Containerized Docker deployment on Northflank with dynamic port binding, health monitoring, environment secret management, and continuous Git deployment; global edge distribution on Vercel. |
@@ -39,8 +41,8 @@ flowchart TD
     end
 
     subgraph LLM_TIER ["MULTI-PROVIDER AI INFERENCE"]
-        PRIMARY["Gemini 3.5 Flash<br/>(Primary Structured Output)"]:::llmBox
-        FAILOVER["Groq GPT-OSS-120B<br/>(Sub-Second Automatic Failover)"]:::failoverBox
+        PRIMARY["Groq GPT-OSS-120B<br/>(Primary Structured Output)"]:::llmBox
+        FAILOVER["Gemini 3.6 Flash<br/>(Sub-Second Automatic Failover)"]:::failoverBox
     end
 
     CLIENT -->|SSE Stream / REST| ROUTES
@@ -68,8 +70,8 @@ flowchart TD
 ### C. Multi-Provider Automatic Failover
 * **Problem**: Free-tier cloud LLM endpoints frequently suffer from rate limits (`429 RESOURCE_EXHAUSTED`) or network timeouts.
 * **Decision**: Implemented resilient multi-provider routing in `backend/app/graph.py`:
-  * Attempts primary model (`Gemini 3.5 Flash`) with `max_retries=1` and `timeout=30.0` for bounded latency.
-  * Catches quota and timeout exceptions and automatically switches to `Groq` (`openai/gpt-oss-120b`) failover without crashing the pipeline.
+  * Attempts primary model (`Groq` `openai/gpt-oss-120b`) with `max_retries=1` and `timeout=30.0` for sub-second classification (~500 tokens/sec).
+  * Catches quota, rate limit, and timeout exceptions and automatically switches to `Gemini 3.6 Flash` failover without crashing the pipeline.
   * Both providers adhere to the identical `EmailClassification` Pydantic structured output contract.
 
 ### D. In-Context Feedback Loop (Few-Shot Reinforcement)
@@ -83,6 +85,15 @@ flowchart TD
 * **Problem**: In multi-turn HITL flows, successive user inputs could overwrite previous information or omit uploaded defect images.
 * **Decision**: State accumulation logic concatenates successive supplementary inputs (`f"{existing}\n{new}"`) and explicitly injects filenames from `state["attachments"]` into the LLM context string.
 
+### F. Resilient Hybrid Embeddings & Model Observability
+* **Problem**: Running heavy local transformer models on every single embedding operation consumes excessive CPU/RAM and can exhaust memory during concurrent triage. Conversely, relying exclusively on an external API risks total pipeline failure if the API key is offline or throttled.
+* **Decision**: Implemented `ResilientEmbeddingFunction` (`backend/app/chroma_client.py`):
+  * **Primary**: Google Gemini Cloud (`models/gemini-embedding-001`) truncated to 384 dimensions via Matryoshka Representation Learning (MRL). Offloads neural net compute to Google Cloud GPUs at $0 cost and 1,500 RPM throughput.
+  * **Fallback**: Local ONNX `DefaultEmbeddingFunction` (`all-MiniLM-L6-v2`, 384-dim) takes over automatically if Google API calls fail.
+  * **Unified Dimensionality**: Both primary and fallback produce identical 384-dimensional vectors, ensuring complete compatibility across ChromaDB collections.
+  * **Model Observability**: Every vector generation, semantic cache query, feedback exemplar retrieval, and policy RAG search explicitly outputs the active embedding model name to terminal logs and the live UI processing log.
+  * **Parallel Concurrency**: Background batch email triage runs at 3 concurrent workers (`TRIAGE_CONCURRENCY=3`).
+
 ---
 
 ## 3. Current POC Limitations
@@ -91,8 +102,8 @@ flowchart TD
    * SQLite checkpoints and the JSON feedback store run on the local filesystem. This is ideal for single-instance POCs and evaluation but does not scale horizontally across multiple container replicas.
 2. **Simulated Email Inbox**:
    * Incoming emails and author replies are currently simulated via a curated mock dataset (`sample_emails.py`) and an interactive UI form rather than live IMAP/SMTP/Webhook listeners.
-3. **Lexical Few-Shot Retrieval**:
-   * Corrections are currently retrieved using category matching and recency filters. In a large enterprise with thousands of corrections, dense vector embeddings would provide higher semantic precision.
+3. **Single-Node Vector Persistence**:
+   * Few-shot corrections, intent cache, and policy handbook chunks are stored in a local persistent ChromaDB directory (`data/chroma_db`). In an enterprise multi-replica deployment, this can be transitioned to managed Qdrant, Pinecone, or pgvector.
 4. **Local Proof Storage**:
    * Uploaded defect images/videos are handled in-memory and referenced by filename rather than uploaded to a secure cloud blob storage bucket.
 
