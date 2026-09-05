@@ -18,7 +18,7 @@ This document provides the complete suite of **Sample Test Cases** used to evalu
 | **TC-06** | **Vikram Seth** (#4) | Pre-Publication Asset Update (Design) | Classifies `cover_design` and routes directly to Cover Design Team. |
 | **TC-07** | **Meera Nair** (#5) | Distribution Channel Sync Delay | Grounded RAG auto-reply explaining Flipkart 7–14 business day sync timelines. |
 | **TC-08** | **Newcomer Author** (#7) | Publishing Onboarding Guidance | Grounded RAG auto-reply detailing the 3-step Notion Press self-publishing path. |
-| **TC-09** | **SpamBot Inc** (#9) | Fast-Path Intake Filter (<span class=“va-math-inline” data-latex="0 Cost) | Quarantined in ~1ms without LLM invocation (" contenteditable=“false”>0Cost)∣Quarantinedin 1mswithoutLLMinvocation(0 token cost). |
+| **TC-09** | **SpamBot Inc** (#9) | Fast-Path Intake Filter ($0 Cost) | Quarantined in ~1ms without LLM invocation ($0 token cost). |
 | **TC-10** | **Deepa Krishnan** (#10) | Multi-Intent Discrepancy & Routing | Deconstructs compound inquiry (royalty + inventory) into prioritized action. |
 | **TC-11** | **Human Feedback Loop** | In-Context Dynamic Few-Shot Learning | Correction stored in ChromaDB vector store; reuses exemplar for future queries. |
 
@@ -37,7 +37,7 @@ This document provides the complete suite of **Sample Test Cases** used to evalu
     
 *   **What This Tests**:
     *   Accurate intent classification (`publishing_status`).
-    *   Document grounding via ChromaDB vector retrieval against the official Notion Press Author Publishing Policy Handbook.
+    *   Document grounding via ChromaDB vector retrieval (powered by resilient hybrid embeddings: Google Gemini Cloud `models/gemini-embedding-001` or local ONNX fallback) against the official Notion Press Author Publishing Policy Handbook.
     *   Ensures the model quotes verified platform turnaround times (48–72 hours for Amazon) rather than fabricating dates.
 *   **Expected Result**:
     *   **Intent**: `publishing_status` | **Urgency**: `1 / 5` | **Confidence**: `> 90%`
@@ -227,7 +227,7 @@ This test demonstrates the core assessment requirement: *“Add a simple way for
 3. Click the “Provide Correction” button in the top action bar.
 4. Change the Intent (e.g. from cover_design to general_inquiry) and add a brief reason (e.g., “Author is asking general process questions”).
 5. Click “Submit Correction & Re-evaluate”.
-6. Observation:The correction is immediately indexed into the persistent ChromaDB vector store (feedback_store.py).The workflow re-evaluates the email through the state machine.When a similar inquiry arrives in the future, the system dynamically retrieves this exemplar via cosine similarity, improving classification accuracy without model fine-tuning.
+6. Observation: The correction is immediately indexed into the persistent ChromaDB vector store (`feedback_store.py`) using the active embedding model (Google Gemini Cloud or local ONNX fallback). The workflow re-evaluates the email through the state machine. When a similar inquiry arrives in the future, the system dynamically retrieves this exemplar via cosine similarity, improving classification accuracy without model fine-tuning.
 
  *
 

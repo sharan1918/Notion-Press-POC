@@ -29,7 +29,7 @@ flowchart TD
 
     CACHE_CHECK["Semantic Intent Cache<br/>ChromaDB Cosine Embedding"]:::amberBox
 
-    AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.5 Failover"]:::blueBox
+    AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.6 Failover"]:::blueBox
 
     GUARD["[ 5. SAFETY RULES & POLICY ]<br/><b>Deterministic Engine (policy.py)</b><br/>Evaluates Intent, Thresholds & Risk"]:::greenBox
 
@@ -94,7 +94,7 @@ flowchart TD
    Deterministic Filter     Cosine Sim >= 0.90      LangGraph State Machine
    (Spam Domains/Words)     (Reuse Stored Intent)   (fetch_and_classify node)
       Instant Archive         Skip LLM Inference     Groq GPT-OSS-120B (Primary)
-        ($0 / ~1ms)               ($0 / ~5ms)        Gemini 3.5 Flash (Failover)
+        ($0 / ~1ms)               ($0 / ~5ms)        Gemini 3.6 Flash (Failover)
              │                       │               + Few-Shot ChromaDB Vectors
              │                       │                       │
              │                       └───────────┬───────────┘
@@ -151,11 +151,12 @@ flowchart TD
 
 - **Why LangGraph?** We need conditional branching, human-in-the-loop interruption, resumability, and stopping conditions. LangGraph provides these as first-class primitives.
 - **Why SSE Streaming & Auto-Processing?** Clicking an email automatically streams LangGraph node events via Server-Sent Events (SSE) in real-time and caches results. This eliminates manual trigger delays and provides progressive UI feedback while preserving API efficiency.
-- **Why Multi-Provider Failover (Groq + Gemini 3.5 Flash)?** Primary classification uses Groq (`openai/gpt-oss-120b`) for sub-second inference speeds (~500 tokens/sec), with seamless automatic fallback to Gemini 3.5 Flash if Groq rate limits or network issues occur.
+- **Why Multi-Provider Failover (Groq + Gemini 3.6 Flash)?** Primary classification uses Groq (`openai/gpt-oss-120b`) for sub-second inference speeds (~500 tokens/sec), with seamless automatic fallback to Gemini 3.6 Flash if Groq rate limits or network issues occur.
 - **Why LangChain?** Used strictly for model interfaces and structured output abstraction (`.with_structured_output()`). No unnecessary agents or chains.
 - **Why not multi-agent?** A single AI decision component inside a stateful workflow is simpler, easier to test, and more reliable than a swarm of autonomous agents.
 - **Why deterministic guardrails?** An LLM should recommend actions, but standard Python code should enforce business safety logic.
-- **Why ChromaDB Vector Retrieval?** Employs persistent ChromaDB vector storage (`hnsw:space: cosine`) for semantic few-shot correction retrieval and verified Notion Press policy grounding, with a human-readable JSON backup for auditability.
+- **Why ChromaDB & Resilient Hybrid Embeddings?** Employs a shared singleton ChromaDB client with resilient hybrid embeddings: primary Google Gemini Cloud (`models/gemini-embedding-001`, 384-dim via Matryoshka Representation Learning) offloading neural net compute to Google Cloud GPUs, with seamless automatic fallback to local ONNX (`all-MiniLM-L6-v2`, 384-dim). Powers semantic few-shot correction retrieval, intent caching, and verified policy RAG with zero memory duplication.
+- **Why Concurrent Triage (Concurrency = 3) & Model Observability?** Bulk inbox triage executes concurrently with 3 parallel workers (`TRIAGE_CONCURRENCY=3`). Every embedding and LLM invocation outputs its active model name directly into terminal logs and the frontend UI's live processing log.
 
 ## 📚 Assessment Deliverables & Documentation
 
