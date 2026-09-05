@@ -29,13 +29,12 @@ flowchart TD
     SPAM["[ 6. INSTANT ARCHIVE ]<br/>$0 Token Cost / ~1ms"]:::redBox
 
     CACHE_CHECK["Semantic Intent Cache<br/>ChromaDB Cosine Embedding"]:::amberBox
-    CACHE_HIT["[ REPEAT INQUIRY ]<br/>Reuse Stored Classification ($0)"]:::amberBox
 
     AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.5 Failover"]:::blueBox
 
     GUARD["[ 5. SAFETY RULES & POLICY ]<br/><b>Deterministic Engine (policy.py)</b><br/>Evaluates Intent, Thresholds & Risk"]:::greenBox
 
-    RAG_REPLY["[ RAG AUTO-REPLY ]<br/>Grounded Notion Press Policy<br/><i>(General, Status, Distribution)</i>"]:::greenBox
+    RAG_REPLY["[ RAG AUTO-REPLY ]<br/>Grounded Notion Press Policy<br/><i>(Personalized with New Author Name)</i>"]:::greenBox
     TEAM_ROUTE["[ ROUTE TO TEAM ]<br/>Dispatched to Department<br/><i>(Finance, QA/Printing, Design)</i>"]:::cyanBox
     NEED_INFO["[ MISSING INFO ]<br/>LangGraph interrupt()<br/><i>(ISBN or Order ID Absent)</i>"]:::purpleBox
     HITL["[ SUPERVISOR APPROVAL ]<br/>LangGraph interrupt()<br/><i>(Urgency &gt;= 4, Conf &lt; 70%, High Risk)</i>"]:::purpleBox
@@ -50,17 +49,15 @@ flowchart TD
     SPAM_CHECK -->|"Spam Score &gt;= 0.70"| SPAM
     SPAM_CHECK -->|"Spam Score &lt; 0.70 (Legitimate Mail)"| CACHE_CHECK
 
-    CACHE_CHECK -->|"Cosine Sim &gt;= 0.90 (Cache Hit)"| CACHE_HIT
-    CACHE_HIT --> RESOLUTION
-
-    CACHE_CHECK -->|"Cosine Sim &lt; 0.90 (Cache Miss / New Inquiry)"| AI
+    CACHE_CHECK -->|"Cosine Sim &gt;= 0.90<br/>(Cache Hit - Reuses Intent, Skips LLM)"| GUARD
+    CACHE_CHECK -->|"Cosine Sim &lt; 0.90<br/>(Cache Miss - Requires LLM)"| AI
 
     AI --> GUARD
 
     GUARD -->|"Missing Required Fields<br/>(ISBN, Order ID Absent)"| NEED_INFO
     GUARD -->|"Urgency &gt;= 4 OR Conf &lt; 70%<br/>OR High-Impact (Refund/Complaint/ISBN)"| HITL
-    GUARD -->|"Safe Informational Intent<br/>(Urgency &lt; 4 &amp; Conf &gt;= 70%)"| RAG_REPLY
-    GUARD -->|"Safe Departmental Intent<br/>(Urgency &lt; 4 &amp; Conf &gt;= 70%)"| TEAM_ROUTE
+    GUARD -->|"Safe Informational Intent<br/>(General, Status, Distribution)"| RAG_REPLY
+    GUARD -->|"Safe Departmental Intent<br/>(Royalty ➔ Finance, Print ➔ QA, Cover ➔ Design)"| TEAM_ROUTE
 
     RAG_REPLY --> RESOLUTION
     TEAM_ROUTE --> RESOLUTION
