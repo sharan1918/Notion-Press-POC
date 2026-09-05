@@ -25,37 +25,45 @@ flowchart TD
     ROOT["[ 1. INCOMING EMAIL ]<br/><b>Author Support Inquiry</b>"]:::rootBox
     UI["[ 2. USER INTERFACE ]<br/>React 18 + Vite Mock Inbox"]:::lavenderBox
     GATEWAY["[ 3. BACKEND GATEWAY ]<br/>FastAPI Async Engine (REST & SSE)"]:::lavenderBox
-    FILTER["[ 4. SMART INTAKE FILTER ]<br/>Fast-Path Spam & Intent Triage"]:::amberBox
-
+    SPAM_CHECK["[ 4. FAST-PATH FILTER ]<br/>Deterministic Spam Triage"]:::amberBox
     SPAM["[ 6. INSTANT ARCHIVE ]<br/>$0 Token Cost / ~1ms"]:::redBox
-    CACHE["Semantic Cache Hit<br/>Cosine Sim >= 0.90 ($0)"]:::amberBox
+
+    CACHE_CHECK["Semantic Intent Cache<br/>ChromaDB Cosine Embedding"]:::amberBox
+    CACHE_HIT["[ REPEAT INQUIRY ]<br/>Reuse Stored Classification ($0)"]:::amberBox
+
     AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.5 Failover"]:::blueBox
 
-    GUARD["[ 5. SAFETY RULES ]<br/><b>Python Policy Engine (policy.py)</b><br/>Urgency, Confidence & Risk Evaluator"]:::greenBox
+    GUARD["[ 5. SAFETY RULES & POLICY ]<br/><b>Deterministic Engine (policy.py)</b><br/>Evaluates Intent, Thresholds & Risk"]:::greenBox
 
-    AUTO["Auto-Route Resolution<br/>Safe Inquiries / Grounded Reply"]:::greenBox
-    NEED_INFO["Missing Information<br/>LangGraph interrupt()"]:::purpleBox
-    HITL["Supervisor Approval (HITL)<br/>Human Review Required"]:::purpleBox
+    RAG_REPLY["[ RAG AUTO-REPLY ]<br/>Grounded Notion Press Policy<br/><i>(General, Status, Distribution)</i>"]:::greenBox
+    TEAM_ROUTE["[ ROUTE TO TEAM ]<br/>Dispatched to Department<br/><i>(Finance, QA/Printing, Design)</i>"]:::cyanBox
+    NEED_INFO["[ MISSING INFO ]<br/>LangGraph interrupt()<br/><i>(ISBN or Order ID Absent)</i>"]:::purpleBox
+    HITL["[ SUPERVISOR APPROVAL ]<br/>LangGraph interrupt()<br/><i>(Urgency &gt;= 4, Conf &lt; 70%, High Risk)</i>"]:::purpleBox
 
-    RESOLUTION["[ 7. RESOLUTION ]<br/>Grounded Reply & Action Execution"]:::highlightBox
+    RESOLUTION["[ 7. FINAL RESOLUTION ]<br/>Dispatched Action & Logged Metrics"]:::highlightBox
     MEMORY["[ 8. SYSTEM MEMORY ]<br/>SQLite Checkpointer & ChromaDB Vector Store"]:::cyanBox
 
     ROOT --> UI
     UI --> GATEWAY
-    GATEWAY --> FILTER
+    GATEWAY --> SPAM_CHECK
 
-    FILTER -->|Spam Detected| SPAM
-    FILTER -->|Repeat Inquiry| CACHE
-    FILTER -->|New Inquiry| AI
+    SPAM_CHECK -->|"Spam Score &gt;= 0.70"| SPAM
+    SPAM_CHECK -->|"Spam Score &lt; 0.70 (Legitimate Mail)"| CACHE_CHECK
 
-    CACHE --> RESOLUTION
+    CACHE_CHECK -->|"Cosine Sim &gt;= 0.90 (Cache Hit)"| CACHE_HIT
+    CACHE_HIT --> RESOLUTION
+
+    CACHE_CHECK -->|"Cosine Sim &lt; 0.90 (Cache Miss / New Inquiry)"| AI
+
     AI --> GUARD
 
-    GUARD -->|"Urgency &lt; 4 AND Confidence &gt;= 70%<br/>(Safe Low-Risk Action)"| AUTO
     GUARD -->|"Missing Required Fields<br/>(ISBN, Order ID Absent)"| NEED_INFO
-    GUARD -->|"Urgency &gt;= 4 OR Confidence &lt; 70%<br/>OR High-Impact (Refund, Metadata, Escalate)"| HITL
+    GUARD -->|"Urgency &gt;= 4 OR Conf &lt; 70%<br/>OR High-Impact (Refund/Complaint/ISBN)"| HITL
+    GUARD -->|"Safe Informational Intent<br/>(Urgency &lt; 4 &amp; Conf &gt;= 70%)"| RAG_REPLY
+    GUARD -->|"Safe Departmental Intent<br/>(Urgency &lt; 4 &amp; Conf &gt;= 70%)"| TEAM_ROUTE
 
-    AUTO --> RESOLUTION
+    RAG_REPLY --> RESOLUTION
+    TEAM_ROUTE --> RESOLUTION
     NEED_INFO -.->|Author Response| AI
     HITL -->|Supervisor Approved / Corrected| RESOLUTION
 
@@ -138,7 +146,7 @@ flowchart TD
 | **`[ 2. USER INTERFACE ]`** | Support agents view real-time triage, live streaming analysis, and approval cards. | Clear, progressive UI without loading delays. |
 | **`[ 3. BACKEND GATEWAY ]`** | High-performance FastAPI server coordinates the stateful workflow. | Reliable, scalable, and secure API tier. |
 | **`[ 4. SMART INTAKE FILTER ]`** | Filters junk spam instantly and matches repeated inquiries from semantic cache. | **$0 token cost** — saves money and responds in under 5ms. |
-| **`[ 5. SAFETY RULES ]`** | Pure Python deterministic guardrails evaluate **Urgency (< 4)**, **Confidence (>= 70%)**, and **Action Risk** (refunds/metadata/escalations). | Eliminates AI hallucination on refunds or sensitive actions. |
+| **`[ 5. SAFETY RULES & POLICY ]`** | Pure Python deterministic engine (`policy.py`) routes on explicit criteria: <br>• **`[ RAG AUTO-REPLY ]`**: Informational queries (*general_inquiry*, *publishing_status*, *distribution*) via ChromaDB policy chunks.<br>• **`[ ROUTE TO TEAM ]`**: Departmental requests (*royalty_payment* ➔ Finance, *printing_issue* ➔ QA, *cover_design* ➔ Design).<br>• **`[ MISSING INFO ]`**: Halts if critical identifiers are absent.<br>• **`[ SUPERVISOR APPROVAL ]`**: Urgency &ge; 4, Confidence &lt; 70%, or High Risk. | Eliminates AI hallucination and ensures safe, departmental dispatch. |
 | **`[ 6. ARCHIVE ]`** | Commercial marketing and spam emails are quarantined without calling AI. | Keeps human agents focused strictly on real authors. |
 | **`[ 7. RESOLUTION ]`** | Policy-grounded reply is drafted and approved actions are executed automatically. | Fast, consistent, and courteous author support. |
 | **`[ 8. SYSTEM MEMORY ]`** | Saves thread states and supervisor corrections into persistent vector storage. | AI remembers conversations and learns from past corrections. |
