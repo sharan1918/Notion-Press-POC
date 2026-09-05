@@ -16,7 +16,7 @@ import logging
 import json
 from typing import Optional
 
-from app.chroma_client import get_shared_chroma_client
+from app.chroma_client import get_shared_chroma_client, get_or_create_resilient_collection
 from app.models import Email, EmailClassification, FastPathResult
 from app.config import INTENT_CACHE_SIMILARITY_THRESHOLD
 
@@ -50,7 +50,8 @@ class IntentCache:
     def _init_client(self):
         """Initialize ChromaDB client and collection."""
         self.client = get_shared_chroma_client(self.persist_directory)
-        self.collection = self.client.get_or_create_collection(
+        self.collection = get_or_create_resilient_collection(
+            self.client,
             name=self.collection_name,
             metadata={"hnsw:space": "cosine"},
         )

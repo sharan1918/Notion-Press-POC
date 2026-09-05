@@ -3,7 +3,7 @@ import logging
 import threading
 from datetime import datetime
 from typing import Optional
-from app.chroma_client import get_shared_chroma_client
+from app.chroma_client import get_shared_chroma_client, get_or_create_resilient_collection
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,8 @@ class AuthorKnowledgeBase:
         """Initialize ChromaDB client."""
         try:
             self.client = get_shared_chroma_client(self.persist_directory)
-            self.collection = self.client.get_or_create_collection(
+            self.collection = get_or_create_resilient_collection(
+                self.client,
                 name=self.collection_name,
                 metadata={"hnsw:space": "cosine"},
             )

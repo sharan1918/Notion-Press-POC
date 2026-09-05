@@ -44,7 +44,7 @@ def get_llms():
     gemini = None
     if _is_valid_api_key(gemini_key):
         try:
-            gemini = ChatGoogleGenerativeAI(model="gemini-3.5-flash", max_retries=1, timeout=30.0)
+            gemini = ChatGoogleGenerativeAI(model="gemini-3.6-flash", max_retries=1, timeout=30.0)
         except Exception as e:
             logger.warning(f"Failed to initialize ChatGoogleGenerativeAI: {e}")
             gemini = None

@@ -3,7 +3,7 @@ import os
 import threading
 import logging
 from typing import Optional
-from app.chroma_client import get_shared_chroma_client
+from app.chroma_client import get_shared_chroma_client, get_or_create_resilient_collection
 from app.models import HumanCorrection
 
 logger = logging.getLogger(__name__)
@@ -46,8 +46,9 @@ class FeedbackStore:
         """Initialize local persistent ChromaDB or remote managed Cloud HTTP client."""
         self.client = get_shared_chroma_client(self.persist_directory)
 
-        # Explicit Cosine Metric
-        self.collection = self.client.get_or_create_collection(
+        # Explicit Cosine Metric with Resilient Hybrid Embedding
+        self.collection = get_or_create_resilient_collection(
+            self.client,
             name=self.collection_name,
             metadata={"hnsw:space": "cosine"}
         )
