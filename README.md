@@ -161,7 +161,7 @@ flowchart TD
 
 - 📝 **[Design Decisions, Limitations & Roadmap](docs/DESIGN_DECISIONS_AND_LIMITATIONS.md)**: Dedicated assessment deliverable detailing core decisions, invariants, current limitations, and production upgrades.
 - 📐 **[System Design & Architecture](docs/SYSTEM_DESIGN.md)**: Detailed breakdown of design decisions, multi-provider failover, HITL states, and production roadmap.
-- 🧪 **[Sample Test Cases & Evaluation Scenarios](#-sample-test-cases--evaluation-scenarios)**: 10 realistic author scenarios in the mock inbox + 74 automated unit tests in `pytest`.
+- 🧪 **[Sample Test Cases & Evaluation Scenarios](docs/SAMPLE_TEST_CASES.md)**: 10 realistic author scenarios in the mock inbox + 74 automated unit tests in `pytest`.
 
 ## 🚀 Quick Start
 
