@@ -123,16 +123,15 @@ def add_custom_email(sender_name: str, sender: str, subject: str, body: str) -> 
 
 def get_all_emails() -> list[dict]:
     with _email_lock:
-        # Generate fresh timestamps for samples so they always show realistic relative times
-        fresh_samples = _generate_sample_emails()
-        return list(CUSTOM_EMAILS) + fresh_samples
+        # Fixed sample timestamps generated on server launch; stable across browser refreshes
+        return list(CUSTOM_EMAILS) + list(SAMPLE_EMAILS)
 
 def get_sample_email(email_id: str) -> Email:
     with _email_lock:
         for data in CUSTOM_EMAILS:
             if data["id"] == email_id:
                 return Email(**data)
-        for data in _generate_sample_emails():
+        for data in SAMPLE_EMAILS:
             if data["id"] == email_id:
                 return Email(**data)
     raise ValueError(f"Email with ID {email_id} not found")

@@ -120,11 +120,13 @@ export default function EmailList({ emails, selectedEmailId, onSelect, processin
     if (sortOrder === "sender") {
       return a.sender_name.localeCompare(b.sender_name);
     }
+    const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
     if (sortOrder === "oldest") {
-      return (a.id || "").localeCompare(b.id || "");
+      return timeA !== timeB ? timeA - timeB : (a.id || "").localeCompare(b.id || "");
     }
-    // newest (default by id descending)
-    return (b.id || "").localeCompare(a.id || "");
+    // newest (default by timestamp descending)
+    return timeB !== timeA ? timeB - timeA : (b.id || "").localeCompare(a.id || "");
   });
 
   return (
