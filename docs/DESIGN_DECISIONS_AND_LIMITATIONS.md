@@ -9,81 +9,52 @@
 
 This document provides a comprehensive analysis of the architectural design decisions, system invariants, current proof-of-concept (POC) limitations, and the production upgrade roadmap for the **Notion Press AI-Powered Email Processing System**.
 
-```mermaid
-flowchart TD
-    subgraph Client ["Frontend (React 18 + TypeScript + Vite)"]
-        UI["Mock Inbox UI / Live Triage"]
-        HITL_UI["HITL Modals (Missing Info & Supervisor Approval)"]
-    end
-
-    subgraph Backend ["FastAPI Backend"]
-        API["REST & SSE Streaming API"]
-
-        subgraph LangGraph ["LangGraph State Machine (thread_id)"]
-            N1["1. Ingest Email"]
-            N2["2. Intake Filter (Deterministic Spam & Intent Cache)"]
-            N3["3. Fetch Corrections & Classify"]
-            N4["4. Determine Action & Policy Guardrails"]
-            N5["5. Missing Info Interrupt (interrupt & resume)"]
-            N6["6. Supervisor Approval Interrupt (Approve / Reject / Correct)"]
-            N7["7. Store Feedback (ChromaDB + JSON)"]
-            N8["8. Execute Action / Auto-Reply"]
-        end
-
-        subgraph Storage ["Persistence & Vector Retrieval"]
-            SQLite[("SQLite Saver: checkpoints.db")]
-            FeedbackDB[("Feedback Store: ChromaDB + JSON")]
-            PolicyKB[("Knowledge Base: ChromaDB Policies")]
-        end
-
-        subgraph LLMTier ["Multi-Provider LLM Tier"]
-            Groq["Groq GPT-OSS-120B (Primary · ~500 tok/sec)"]
-            Gemini["Gemini 3.5 Flash (Secondary Failover)"]
-            Groq -.->|Failover| Gemini
-        end
-
-        PolicyEngine["Deterministic Policy Engine (Pure Python Rules · $0 Token Cost)"]
-    end
-
-    %% Client flows
-    UI -->|GET /api/emails / SSE /api/process-stream| API
-    API --> N1
-    N1 --> N2
-
-    %% Fast path bypass
-    N2 -->|Spam Filtered ($0)| N8
-    N2 -->|Cache Hit ($0)| N4
-    N2 -->|Pass Through| N3
-
-    %% LLM & RAG calls
-    FeedbackDB -->|Dynamic Few-Shot Exemplars| N3
-    N3 <-->|Structured Output| LLMTier
-    N3 --> N4
-
-    %% Policy evaluation
-    N4 <-->|Evaluate Guardrails| PolicyEngine
-    PolicyKB -->|Retrieve Policy Docs| N4
-    N4 -.->|LCEL Grounded Reply| LLMTier
-
-    %% Branching & HITL
-    N4 -->|Missing Identifiers| N5
-    N4 -->|High Impact / Urgency >= 4| N6
-    N4 -->|Safe to Route| N8
-
-    %% Resumption
-    N5 <-->|Command(resume)| HITL_UI
-    N5 -->|Accumulated Info| N3
-
-    N6 <-->|Command(resume)| HITL_UI
-    N6 -->|Approve| N8
-    N6 -->|Reject| EndTerm["END (Rejection Invariant)"]
-    N6 -->|Correct Intent| N7
-    N7 -->|Invalidate Cache & Re-evaluate| N3
-
-    N8 --> EndSuccess["END (Action Executed)"]
-
-    %% Checkpointing
-    LangGraph <--> SQLite
+```text
+                           Author Email / Inquiry
+                                      │
+                                      ↓
+                           Frontend (React + Vite)
+                         [Mock Inbox & Live Triage]
+                                      │
+                                      │  REST API & SSE Stream
+                                      ↓
+                               FastAPI Backend
+                                      │
+                                      ↓
+                           Intake Filter ($0 Cost)
+                                      │
+              ┌───────────────────────┼───────────────────────┐
+              ↓ (Spam)                ↓ (Cache Hit)           ↓ (Cache Miss)
+       Instant Archive          Reuse Cached Intent         Classify Intent
+        (Zero Tokens)            (ChromaDB Cosine)      (Groq + Gemini Fallback)
+              │                       │                 (+ Few-Shot Exemplars)
+              │                       │                           │
+              │                       └───────────┬───────────────┘
+              │                                   │
+              │                                   ↓
+              │                          Policy & Guardrails
+              │                     (Deterministic Python Safety)
+              │                     (+ Verified Policy Retrieval)
+              │                                   │
+              │               ┌───────────────────┼───────────────────┐
+              │               ↓                   ↓                   ↓
+              │          Auto-Route          Missing Info      Supervisor Approval
+              │       (Safe Fast-Path)     (Author Clarify)    (Refunds / Urgency)
+              │               │                   │                   │
+              │               │              Author Reply      Approve / Correct
+              │               │                   │                   │
+              │               └───────────────────┼───────────────────┘
+              │                                   │
+              ↓                                   ↓
+        Archive Record                      Execute Action
+        (Instant Stop)                   (Auto-Reply / Triage)
+                                                  │
+                                                  ↓
+                                      Persistence & Checkpoints
+                                ┌─────────────────┴─────────────────┐
+                                ↓                                   ↓
+                           SQLiteSaver                           ChromaDB
+                        (checkpoints.db)                    (Feedback & Policies)
 ```
 
 ---
