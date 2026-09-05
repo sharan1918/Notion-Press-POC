@@ -30,3 +30,7 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+# Local docs & demos
+docs/DEMO_WALKTHROUGH.md
+demo_walkthrough/
+/demo_walkthrough
