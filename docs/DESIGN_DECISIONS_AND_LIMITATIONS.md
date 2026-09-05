@@ -10,52 +10,75 @@
 This document provides a comprehensive analysis of the architectural design decisions, system invariants, current proof-of-concept (POC) limitations, and the production upgrade roadmap for the **Notion Press AI-Powered Email Processing System**.
 
 ```text
-                           Author Email / Inquiry
-                                      │
-                                      ↓
-                           Frontend (React + Vite)
-                         [Mock Inbox & Live Triage]
-                                      │
-                                      │  REST API & SSE Stream
-                                      ↓
-                               FastAPI Backend
-                                      │
-                                      ↓
-                           Intake Filter ($0 Cost)
-                                      │
-              ┌───────────────────────┼───────────────────────┐
-              ↓ (Spam)                ↓ (Cache Hit)           ↓ (Cache Miss)
-       Instant Archive          Reuse Cached Intent         Classify Intent
-        (Zero Tokens)            (ChromaDB Cosine)      (Groq + Gemini Fallback)
-              │                       │                 (+ Few-Shot Exemplars)
-              │                       │                           │
-              │                       └───────────┬───────────────┘
-              │                                   │
-              │                                   ↓
-              │                          Policy & Guardrails
-              │                     (Deterministic Python Safety)
-              │                     (+ Verified Policy Retrieval)
-              │                                   │
-              │               ┌───────────────────┼───────────────────┐
-              │               ↓                   ↓                   ↓
-              │          Auto-Route          Missing Info      Supervisor Approval
-              │       (Safe Fast-Path)     (Author Clarify)    (Refunds / Urgency)
-              │               │                   │                   │
-              │               │              Author Reply      Approve / Correct
-              │               │                   │                   │
-              │               └───────────────────┼───────────────────┘
-              │                                   │
-              ↓                                   ↓
-        Archive Record                      Execute Action
-        (Instant Stop)                   (Auto-Reply / Triage)
-                                                  │
-                                                  ↓
-                                      Persistence & Checkpoints
-                                ┌─────────────────┴─────────────────┐
-                                ↓                                   ↓
-                           SQLiteSaver                           ChromaDB
-                        (checkpoints.db)                    (Feedback & Policies)
+                           [ 1. INCOMING EMAIL ]
+                          Author Email / Inquiry
+                                     │
+                                     ↓
+                          [ 2. USER INTERFACE ]
+                         Frontend (React + Vite)
+                        [Mock Inbox & Live Triage]
+                                     │
+                                     │  REST API & SSE Stream
+                                     ↓
+                          [ 3. BACKEND GATEWAY ]
+                             FastAPI Backend
+                                     │
+                                     ↓
+                         [ 4. SMART INTAKE FILTER ]
+                         Cost-Saving Fast-Path ($0)
+                                     │
+             ┌───────────────────────┼───────────────────────┐
+             ↓                       ↓                       ↓
+     [ INSTANT SPAM ]        [ REPEAT INQUIRY ]       [ NEW INQUIRY ]
+      Instant Archive       Reuse Cached Answer      AI Classification
+       (Zero Tokens)         (Zero Extra Cost)     (Groq + Gemini Backup)
+             │                       │             (+ Few-Shot Corrections)
+             │                       │                       │
+             │                       └───────────┬───────────┘
+             │                                   │
+             │                                   ↓
+             │                          [ 5. SAFETY RULES ]
+             │                          Policy & Guardrails
+             │                      (Strict Pure-Python Rules)
+             │                      (+ Verified Company Guide)
+             │                                   │
+             │               ┌───────────────────┼───────────────────┐
+             │               ↓                   ↓                   ↓
+             │      [ ROUTE DIRECTLY ]   [ NEED MORE INFO ]  [ MANAGER APPROVAL ]
+             │         Safe Actions         Author Clarify     High-Risk / Refund
+             │        (e.g., Guides)     (Request Details)     Supervisor Review
+             │               │                   │                   │
+             │               │              Author Reply     Approve or Correct
+             │               │                   │                   │
+             │               └───────────────────┴───────────────────┘
+             │                                   │
+             ↓                                   ↓
+      [ 6. ARCHIVE ]                    [ 7. RESOLUTION ]
+       Junk Ignored                      Execute Action
+      (Zero AI Cost)                 (Auto-Reply / Route)
+                                                 │
+                                                 ↓
+                                       [ 8. SYSTEM MEMORY ]
+                                     Saved for Future Learning
+                               ┌─────────────────┴─────────────────┐
+                               ↓                                   ↓
+                         Conversation                     Learned Corrections
+                           History                          & Company Rules
+                     (Resume At Any Time)                 (ChromaDB Memory)
 ```
+
+### 🏷️ Plain-English Flow Guide (For Non-Technical Reviewers)
+
+| Stage Tag | What It Does | Business Value |
+| :--- | :--- | :--- |
+| **`[ 1. INCOMING EMAIL ]`** | Author sends an inquiry (royalties, printing status, manuscript questions). | Centralized, omnichannel support ingestion. |
+| **`[ 2. USER INTERFACE ]`** | Support agents view real-time triage, live streaming analysis, and approval cards. | Clear, progressive UI without loading delays. |
+| **`[ 3. BACKEND GATEWAY ]`** | High-performance FastAPI server coordinates the stateful workflow. | Reliable, scalable, and secure API tier. |
+| **`[ 4. SMART INTAKE FILTER ]`** | Filters junk spam instantly and matches repeated inquiries from semantic cache. | **$0 token cost** — saves money and responds in under 5ms. |
+| **`[ 5. SAFETY RULES ]`** | Pure Python deterministic guardrails ensure safe business policy compliance. | Eliminates AI hallucination on refunds or sensitive actions. |
+| **`[ 6. ARCHIVE ]`** | Commercial marketing and spam emails are quarantined without calling AI. | Keeps human agents focused strictly on real authors. |
+| **`[ 7. RESOLUTION ]`** | Policy-grounded reply is drafted and approved actions are executed automatically. | Fast, consistent, and courteous author support. |
+| **`[ 8. SYSTEM MEMORY ]`** | Saves thread states and supervisor corrections into persistent vector storage. | AI remembers conversations and learns from past corrections. |
 
 ---
 

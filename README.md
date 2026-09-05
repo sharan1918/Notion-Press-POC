@@ -6,46 +6,78 @@ This system classifies incoming author emails, recommends an appropriate action,
 
 ## 🏗 Architecture
 
-The system uses a single AI decision component orchestrated by a stateful LangGraph workflow.
+The system uses a single AI decision component orchestrated by a stateful LangGraph workflow with deterministic policy guardrails, fast-path intake filtering, and multi-provider LLM failover.
 
-```mermaid
-graph TD
-    subgraph Frontend ["Frontend (React + TypeScript + Tailwind)"]
-        UI["Mock Inbox UI"]
-    end
-
-    subgraph Backend ["Backend (FastAPI + Python)"]
-        API["REST API"]
-        Policy["Deterministic Policy Engine"]
-        subgraph LG ["LangGraph StateGraph"]
-            Ingest["Ingest Email"]
-            FetchClassify["Fetch Corrections + Classify"]
-            Action["Determine Action"]
-            PolicyCheck["Policy Check"]
-            HumanApproval["Human Approval (interrupt)"]
-            RequestInfo["Request Info (interrupt)"]
-            StoreFeedback["Store Feedback"]
-            Execute["Execute Action"]
-        end
-        FeedbackStore["Feedback Store (ChromaDB + JSON)"]
-        SQLite["SQLite Checkpointer"]
-        LLM["Groq GPT-OSS-120B (Primary) + Gemini 3.5 Flash (Failover)"]
-    end
-
-    UI --> API
-    API --> Ingest
-    Ingest --> FetchClassify
-    FetchClassify --> LLM
-    FetchClassify --> Action
-    Action --> PolicyCheck
-    PolicyCheck --> Execute
-    PolicyCheck --> HumanApproval
-    PolicyCheck --> RequestInfo
-    HumanApproval --> Execute
-    HumanApproval --> StoreFeedback
-    StoreFeedback --> FetchClassify
-    RequestInfo --> FetchClassify
+```text
+                           [ 1. INCOMING EMAIL ]
+                          Author Email / Inquiry
+                                     │
+                                     ↓
+                          [ 2. USER INTERFACE ]
+                         Frontend (React + Vite)
+                        [Mock Inbox & Live Triage]
+                                     │
+                                     │  REST API & SSE Stream
+                                     ↓
+                          [ 3. BACKEND GATEWAY ]
+                             FastAPI Backend
+                                     │
+                                     ↓
+                         [ 4. SMART INTAKE FILTER ]
+                         Cost-Saving Fast-Path ($0)
+                                     │
+             ┌───────────────────────┼───────────────────────┐
+             ↓                       ↓                       ↓
+     [ INSTANT SPAM ]        [ REPEAT INQUIRY ]       [ NEW INQUIRY ]
+      Instant Archive       Reuse Cached Answer      AI Classification
+       (Zero Tokens)         (Zero Extra Cost)     (Groq + Gemini Backup)
+             │                       │             (+ Few-Shot Corrections)
+             │                       │                       │
+             │                       └───────────┬───────────┘
+             │                                   │
+             │                                   ↓
+             │                          [ 5. SAFETY RULES ]
+             │                          Policy & Guardrails
+             │                      (Strict Pure-Python Rules)
+             │                      (+ Verified Company Guide)
+             │                                   │
+             │               ┌───────────────────┼───────────────────┐
+             │               ↓                   ↓                   ↓
+             │      [ ROUTE DIRECTLY ]   [ NEED MORE INFO ]  [ MANAGER APPROVAL ]
+             │         Safe Actions         Author Clarify     High-Risk / Refund
+             │        (e.g., Guides)     (Request Details)     Supervisor Review
+             │               │                   │                   │
+             │               │              Author Reply     Approve or Correct
+             │               │                   │                   │
+             │               └───────────────────┴───────────────────┘
+             │                                   │
+             ↓                                   ↓
+      [ 6. ARCHIVE ]                    [ 7. RESOLUTION ]
+       Junk Ignored                      Execute Action
+      (Zero AI Cost)                 (Auto-Reply / Route)
+                                                 │
+                                                 ↓
+                                       [ 8. SYSTEM MEMORY ]
+                                     Saved for Future Learning
+                               ┌─────────────────┴─────────────────┐
+                               ↓                                   ↓
+                         Conversation                     Learned Corrections
+                           History                          & Company Rules
+                     (Resume At Any Time)                 (ChromaDB Memory)
 ```
+
+### 🏷️ Plain-English Flow Guide (For Non-Technical Reviewers)
+
+| Stage Tag | What It Does | Business Value |
+| :--- | :--- | :--- |
+| **`[ 1. INCOMING EMAIL ]`** | Author sends an inquiry (royalties, printing status, manuscript questions). | Centralized, omnichannel support ingestion. |
+| **`[ 2. USER INTERFACE ]`** | Support agents view real-time triage, live streaming analysis, and approval cards. | Clear, progressive UI without loading delays. |
+| **`[ 3. BACKEND GATEWAY ]`** | High-performance FastAPI server coordinates the stateful workflow. | Reliable, scalable, and secure API tier. |
+| **`[ 4. SMART INTAKE FILTER ]`** | Filters junk spam instantly and matches repeated inquiries from semantic cache. | **$0 token cost** — saves money and responds in under 5ms. |
+| **`[ 5. SAFETY RULES ]`** | Pure Python deterministic guardrails ensure safe business policy compliance. | Eliminates AI hallucination on refunds or sensitive actions. |
+| **`[ 6. ARCHIVE ]`** | Commercial marketing and spam emails are quarantined without calling AI. | Keeps human agents focused strictly on real authors. |
+| **`[ 7. RESOLUTION ]`** | Policy-grounded reply is drafted and approved actions are executed automatically. | Fast, consistent, and courteous author support. |
+| **`[ 8. SYSTEM MEMORY ]`** | Saves thread states and supervisor corrections into persistent vector storage. | AI remembers conversations and learns from past corrections. |
 
 ## 🧠 Architecture Decisions
 
