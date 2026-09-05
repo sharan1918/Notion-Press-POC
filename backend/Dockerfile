@@ -18,6 +18,9 @@ COPY requirements.txt .
 # Install Python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download and cache ChromaDB ONNX embedding model during build
+RUN python -c "import chromadb.utils.embedding_functions as ef; fn = ef.DefaultEmbeddingFunction(); fn(['warmup'])"
+
 # Copy backend application source code
 COPY app/ ./app/
 
