@@ -31,11 +31,11 @@ flowchart TD
     CACHE["Semantic Cache Hit<br/>Cosine Sim >= 0.90 ($0)"]:::amberBox
     AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.5 Failover"]:::blueBox
 
-    GUARD["[ 5. SAFETY RULES ]<br/>Deterministic Python Policy Engine"]:::greenBox
+    GUARD["[ 5. SAFETY RULES ]<br/><b>Python Policy Engine (policy.py)</b><br/>Urgency, Confidence & Risk Evaluator"]:::greenBox
 
-    AUTO["Auto-Route Resolution<br/>Safe Inquiries (Urgency &lt; 4)"]:::greenBox
+    AUTO["Auto-Route Resolution<br/>Safe Inquiries / Grounded Reply"]:::greenBox
     NEED_INFO["Missing Information<br/>LangGraph interrupt()"]:::purpleBox
-    HITL["Supervisor Approval<br/>High Risk / Refund &gt;= Rs. 1,000"]:::purpleBox
+    HITL["Supervisor Approval (HITL)<br/>Human Review Required"]:::purpleBox
 
     RESOLUTION["[ 7. RESOLUTION ]<br/>Grounded Reply & Action Execution"]:::highlightBox
     MEMORY["[ 8. SYSTEM MEMORY ]<br/>SQLite Checkpointer & ChromaDB Vector Store"]:::cyanBox
@@ -51,9 +51,9 @@ flowchart TD
     CACHE --> RESOLUTION
     AI --> GUARD
 
-    GUARD -->|Safe Action| AUTO
-    GUARD -->|Missing Identifiers| NEED_INFO
-    GUARD -->|Sensitive / High-Impact| HITL
+    GUARD -->|"Urgency &lt; 4 AND Confidence &gt;= 70%<br/>(Safe Low-Risk Action)"| AUTO
+    GUARD -->|"Missing Required Fields<br/>(ISBN, Order ID Absent)"| NEED_INFO
+    GUARD -->|"Urgency &gt;= 4 OR Confidence &lt; 70%<br/>OR High-Impact (Refund, Metadata, Escalate)"| HITL
 
     AUTO --> RESOLUTION
     NEED_INFO -.->|Author Response| AI
@@ -138,7 +138,7 @@ flowchart TD
 | **`[ 2. USER INTERFACE ]`** | Support agents view real-time triage, live streaming analysis, and approval cards. | Clear, progressive UI without loading delays. |
 | **`[ 3. BACKEND GATEWAY ]`** | High-performance FastAPI server coordinates the stateful workflow. | Reliable, scalable, and secure API tier. |
 | **`[ 4. SMART INTAKE FILTER ]`** | Filters junk spam instantly and matches repeated inquiries from semantic cache. | **$0 token cost** — saves money and responds in under 5ms. |
-| **`[ 5. SAFETY RULES ]`** | Pure Python deterministic guardrails ensure safe business policy compliance. | Eliminates AI hallucination on refunds or sensitive actions. |
+| **`[ 5. SAFETY RULES ]`** | Pure Python deterministic guardrails evaluate **Urgency (< 4)**, **Confidence (>= 70%)**, and **Action Risk** (refunds/metadata/escalations). | Eliminates AI hallucination on refunds or sensitive actions. |
 | **`[ 6. ARCHIVE ]`** | Commercial marketing and spam emails are quarantined without calling AI. | Keeps human agents focused strictly on real authors. |
 | **`[ 7. RESOLUTION ]`** | Policy-grounded reply is drafted and approved actions are executed automatically. | Fast, consistent, and courteous author support. |
 | **`[ 8. SYSTEM MEMORY ]`** | Saves thread states and supervisor corrections into persistent vector storage. | AI remembers conversations and learns from past corrections. |

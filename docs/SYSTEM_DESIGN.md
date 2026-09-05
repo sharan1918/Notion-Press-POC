@@ -32,7 +32,7 @@ flowchart TD
 
     subgraph BACKEND ["FASTAPI ASYNC BACKEND"]
         ROUTES["Inbound API Routes<br/>/api/process-stream & REST"]:::gatewayBox
-        GRAPH["LangGraph Orchestrator<br/>State Machine & Deterministic Guardrails"]:::graphBox
+        GRAPH["LangGraph Orchestrator<br/>State Machine & Policy Engine<br/>• Urgency Threshold: &gt;= 4 ➔ Approval<br/>• Confidence Threshold: &lt; 70% ➔ Approval<br/>• Missing Required Data ➔ interrupt()"]:::graphBox
         CHECKPOINT["SQLite Checkpointer<br/>(checkpoints.db Thread State)"]:::memoryBox
         FEEDBACK["ChromaDB Vector Store<br/>Few-Shot Feedback Store"]:::memoryBox
     end
