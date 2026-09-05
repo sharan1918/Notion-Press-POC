@@ -99,9 +99,6 @@ The system uses a single AI decision component orchestrated by a stateful LangGr
 
 - 📝 **[Design Decisions, Limitations & Roadmap](docs/DESIGN_DECISIONS_AND_LIMITATIONS.md)**: Dedicated assessment deliverable detailing core decisions, invariants, current limitations, and production upgrades.
 - 📐 **[System Design & Architecture](docs/SYSTEM_DESIGN.md)**: Detailed breakdown of design decisions, multi-provider failover, HITL states, and production roadmap.
-- 🛡️ **[Design Notes & Reliability](DESIGN_NOTES.md)**: Analysis of agent harness, failure recovery, stopping limits, and invariant safety checks.
-- ⚡ **[Intake Filter Optimization](docs/INTAKE_FILTER_DESIGN.md)**: Fast-path cost reduction engine ($0 spam triage + semantic caching).
-- 🚀 **[Deployment & CI/CD Guide](docs/DEPLOYMENT.md)**: Automated GitHub Actions CI pipeline, Docker containers, and cloud deployment guides.
 
 ## 🚀 Quick Start
 
@@ -134,4 +131,3 @@ The system uses a single AI decision component orchestrated by a stateful LangGr
 - **CI Pipeline**: Automated backend test suite (`pytest`) and frontend verification (`oxlint` + `vite build`) via GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 - **Backend Deployment**: Containerized on **Koyeb** via [`backend/Dockerfile`](backend/Dockerfile) with dynamic port handling and CORS support.
 - **Frontend Deployment**: Hosted on **Vercel** with global edge CDN and automatic PR previews.
-- **Full Guide**: See [Deployment & CI/CD Guide](docs/DEPLOYMENT.md).
