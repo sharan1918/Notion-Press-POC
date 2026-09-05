@@ -1,8 +1,11 @@
 import os
 import threading
 import logging
+from dotenv import load_dotenv
 import chromadb
 from chromadb.config import Settings
+
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,16 @@ def reset_shared_chroma_client():
         _EMBEDDING_FUNCTION = None
 
 
+def _safe_print(msg: str):
+    try:
+        print(msg, flush=True)
+    except Exception:
+        try:
+            print(msg.encode("ascii", errors="replace").decode("ascii"), flush=True)
+        except Exception:
+            pass
+
+
 class ResilientEmbeddingFunction(chromadb.EmbeddingFunction[chromadb.api.types.Documents]):
     """
     Resilient Hybrid Embedding Function:
@@ -82,23 +95,49 @@ class ResilientEmbeddingFunction(chromadb.EmbeddingFunction[chromadb.api.types.D
                     dimension=dimension,
                     api_key_env_var=api_key_env_var,
                 )
-                logger.info(f"[Chroma] Initialized primary Google Gemini embedding function (dimension={dimension})")
+                init_msg = f"[Embeddings] Initialized primary embedding model: Google Gemini Cloud ('models/gemini-embedding-001', dimension={dimension})"
+                _safe_print(init_msg)
+                logger.info(init_msg)
             except Exception as e:
-                logger.warning(f"[Chroma] Failed to initialize Google Gemini embedding: {e}. Will use ONNX fallback.")
+                warn_msg = f"[Embeddings] Failed to initialize Google Gemini embedding: {e}. Will use ONNX fallback."
+                _safe_print(warn_msg)
+                logger.warning(warn_msg)
+        else:
+            init_msg = f"[Embeddings] No valid Google API key found. Using fallback embedding model: Local ONNX ('all-MiniLM-L6-v2', dimension={dimension})"
+            _safe_print(init_msg)
+            logger.info(init_msg)
 
     def __call__(self, input: chromadb.api.types.Documents) -> chromadb.api.types.Embeddings:
         if self._gemini_ef is not None:
             try:
-                return self._gemini_ef(input)
+                embeddings = self._gemini_ef(input)
+                msg = f"[Embeddings] Generated {len(input)} vector(s) using model: 'models/gemini-embedding-001' (Google Gemini Cloud, 384-dim)"
+                _safe_print(msg)
+                logger.info(msg)
+                return embeddings
             except Exception as e:
-                logger.warning(f"[Chroma] Google Gemini embedding call failed ({e}). Falling back to local ONNX.")
+                warn_msg = f"[Embeddings] Google Gemini call failed ({e}). Falling back to local ONNX model ('all-MiniLM-L6-v2')."
+                _safe_print(warn_msg)
+                logger.warning(warn_msg)
 
         with self._lock:
             if self._onnx_ef is None:
                 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
-                logger.info("[Chroma] Initializing fallback local ONNX DefaultEmbeddingFunction")
+                init_msg = "[Embeddings] Initialized fallback local ONNX model ('all-MiniLM-L6-v2', 384-dim)"
+                _safe_print(init_msg)
+                logger.info(init_msg)
                 self._onnx_ef = DefaultEmbeddingFunction()
-        return self._onnx_ef(input)
+        embeddings = self._onnx_ef(input)
+        fallback_msg = f"[Embeddings] Generated {len(input)} vector(s) using model: 'all-MiniLM-L6-v2' (Local ONNX Fallback, 384-dim)"
+        _safe_print(fallback_msg)
+        logger.info(fallback_msg)
+        return embeddings
+
+    def get_active_model_name(self) -> str:
+        """Return human-readable name of currently active embedding engine."""
+        if self._gemini_ef is not None:
+            return "Google Gemini Cloud ('models/gemini-embedding-001', 384-dim)"
+        return "Local ONNX ('all-MiniLM-L6-v2', 384-dim)"
 
     @staticmethod
     def name() -> str:

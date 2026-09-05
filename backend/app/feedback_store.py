@@ -88,6 +88,10 @@ class FeedbackStore:
             "timestamp": correction.timestamp
         }
 
+        from app.chroma_client import get_shared_embedding_function
+        active_ef = get_shared_embedding_function().get_active_model_name()
+        logger.info(f"[RAG] Indexing correction in ChromaDB using embedding model: {active_ef}")
+
         self.collection.upsert(
             documents=[doc_text],
             metadatas=[metadata],
@@ -135,8 +139,10 @@ class FeedbackStore:
             results: list[HumanCorrection] = []
             seen_keys = set()
             total_count = self.collection.count()
+            from app.chroma_client import get_shared_embedding_function
+            active_ef = get_shared_embedding_function().get_active_model_name()
             logger.info(
-                f"[RAG] Querying vector store | Total stored: {total_count} | Threshold: {threshold:.2f}"
+                f"[RAG] Querying vector store using model: {active_ef} | Total stored: {total_count} | Threshold: {threshold:.2f}"
             )
 
             if query_text and total_count > 0:

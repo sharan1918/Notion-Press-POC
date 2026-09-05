@@ -145,6 +145,9 @@ class AuthorKnowledgeBase:
 
             if self.collection:
                 try:
+                    from app.chroma_client import get_shared_embedding_function
+                    active_ef = get_shared_embedding_function().get_active_model_name()
+                    logger.info(f"[KB] Adding {len(documents)} chunk(s) for '{clean_filename}' using embedding model: {active_ef}")
                     self.collection.add(
                         ids=ids,
                         documents=documents,
@@ -302,6 +305,9 @@ class AuthorKnowledgeBase:
             # 1. Attempt ChromaDB Query
             if self.collection:
                 try:
+                    from app.chroma_client import get_shared_embedding_function
+                    active_ef = get_shared_embedding_function().get_active_model_name()
+                    logger.info(f"[KB] Querying knowledge collection using embedding model: {active_ef}")
                     # Try intent-filtered query first if provided
                     query_kwargs = {
                         "query_texts": [query_text],

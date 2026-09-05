@@ -78,13 +78,15 @@ class IntentCache:
         }
 
         with self.lock:
+            from app.chroma_client import get_shared_embedding_function
+            active_ef = get_shared_embedding_function().get_active_model_name()
             self.collection.upsert(
                 documents=[doc_text],
                 metadatas=[metadata],
                 ids=[doc_id],
             )
         logger.info(
-            f"[CACHE] Stored classification for email '{email.subject}' "
+            f"[CACHE] Stored classification using model: {active_ef} for email '{email.subject}' "
             f"→ intent={classification.intent} (confidence={classification.confidence:.2f})"
         )
 
@@ -104,6 +106,10 @@ class IntentCache:
             total_count = self.collection.count()
             if total_count == 0:
                 return None
+
+            from app.chroma_client import get_shared_embedding_function
+            active_ef = get_shared_embedding_function().get_active_model_name()
+            logger.info(f"[CACHE] Querying semantic intent cache using model: {active_ef}")
 
             try:
                 result = self.collection.query(
