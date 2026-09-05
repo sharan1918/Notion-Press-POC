@@ -218,5 +218,5 @@ uv run pytest
 ## 🚀 CI/CD & Cloud Deployment
 
 - **CI Pipeline**: Automated backend test suite (`pytest`) and frontend verification (`oxlint` + `vite build`) via GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
-- **Backend Deployment**: Containerized on **Koyeb** via [`backend/Dockerfile`](backend/Dockerfile) with dynamic port handling and CORS support.
+- **Backend Deployment**: Containerized on **Northflank** via [`backend/Dockerfile`](backend/Dockerfile) with automated Git builds, dynamic port handling (`${PORT:-8000}`), health checks, and secure CORS headers.
 - **Frontend Deployment**: Hosted on **Vercel** with global edge CDN and automatic PR previews.

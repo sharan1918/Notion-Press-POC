@@ -198,6 +198,15 @@ flowchart TD
 
 ---
 
+### 1.6 Cloud Hosting & Deployment Topology (Northflank + Vercel)
+* **Decision**: Deployed the containerized backend to **Northflank** via Docker, paired with **Vercel** for the global edge frontend.
+* **Rationale**:
+  - **Northflank**: Provides production-grade Docker container execution with continuous GitHub deployment from the `develop` branch, automated health check probes (`/api/health`), dynamic `$PORT` environment binding, and container secret isolation.
+  - **Vercel**: Delivers lightning-fast global edge CDN distribution for the React 18 SPA with automatic PR preview deployments.
+  - **Security & Cold-Start Resilience**: Backend enforces strict CORS origin access for the Vercel frontend, and automatically initializes and seeds the ChromaDB knowledge base on fresh cloud container boot.
+
+---
+
 ## 2. Core Architectural Invariants
 
 The system is built upon three strict architectural invariants:

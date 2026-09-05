@@ -14,6 +14,7 @@ This document details the architectural decisions, technology stack rationale, s
 | **LLM Tier & Failover** | **Gemini 3.5 Flash** (Primary) + **Groq** (Instant Failover) | **Gemini 3.5 Flash** provides state-of-the-art reasoning and native JSON schema enforcement. **Groq** (`openai/gpt-oss-120b` / `llama-3.3-70b`) provides sub-second inference speeds (~500 tokens/sec) and zero-cost high-throughput fallback when Google quotas are exhausted. |
 | **Frontend Framework** | **React 18** + **Vite** + **TypeScript** | Lightning-fast HMR build tooling, strong type safety matching backend Pydantic models, component-driven UI for reactive state updates and real-time SSE stream consumption via `AbortController`. |
 | **Styling & Design System** | **Tailwind CSS** + Custom Design Tokens | Modern dark/light mode, sleek typography, subtle micro-animations, glassmorphism cards, and clean visual status indicators (pulsating triage badges, urgency meters, risk chips). |
+| **Cloud Deployment** | **Northflank** (Backend) + **Vercel** (Frontend) | Containerized Docker deployment on Northflank with dynamic port binding, health monitoring, environment secret management, and continuous Git deployment; global edge distribution on Vercel. |
 
 ---
 
