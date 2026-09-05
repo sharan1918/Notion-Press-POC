@@ -11,60 +11,66 @@ This document provides a comprehensive analysis of the architectural design deci
 
 ```text
                            [ 1. INCOMING EMAIL ]
-                          Author Email / Inquiry
+                Raw Email Payload (Subject, Body, Attachments)
                                      │
                                      ↓
                           [ 2. USER INTERFACE ]
-                         Frontend (React + Vite)
-                        [Mock Inbox & Live Triage]
+                       React 18 + TypeScript + Vite
+                   Mock Inbox UI & Real-Time SSE Triage
                                      │
-                                     │  REST API & SSE Stream
+                                     │  REST API & SSE /api/process-stream
                                      ↓
                           [ 3. BACKEND GATEWAY ]
-                             FastAPI Backend
+                       FastAPI (Python 3.13 Async)
                                      │
                                      ↓
                          [ 4. SMART INTAKE FILTER ]
-                         Cost-Saving Fast-Path ($0)
+                   Fast-Path Spam & Semantic Intent Cache
+                        (Pure Python & ChromaDB, $0)
                                      │
              ┌───────────────────────┼───────────────────────┐
              ↓                       ↓                       ↓
      [ INSTANT SPAM ]        [ REPEAT INQUIRY ]       [ NEW INQUIRY ]
-      Instant Archive       Reuse Cached Answer      AI Classification
-       (Zero Tokens)         (Zero Extra Cost)     (Groq + Gemini Backup)
-             │                       │             (+ Few-Shot Corrections)
+   Deterministic Filter     Cosine Sim >= 0.90      LangGraph State Machine
+   (Spam Domains/Words)     (Reuse Stored Intent)   (fetch_and_classify node)
+      Instant Archive         Skip LLM Inference     Groq GPT-OSS-120B (Primary)
+        ($0 / ~1ms)               ($0 / ~5ms)        Gemini 3.5 Flash (Failover)
+             │                       │               + Few-Shot ChromaDB Vectors
              │                       │                       │
              │                       └───────────┬───────────┘
              │                                   │
              │                                   ↓
              │                          [ 5. SAFETY RULES ]
-             │                          Policy & Guardrails
-             │                      (Strict Pure-Python Rules)
-             │                      (+ Verified Company Guide)
+             │                       Deterministic Policy Engine
+             │                      (Pure Python Rules: policy.py)
+             │                      + Grounded Policy KB (ChromaDB)
              │                                   │
              │               ┌───────────────────┼───────────────────┐
              │               ↓                   ↓                   ↓
              │      [ ROUTE DIRECTLY ]   [ NEED MORE INFO ]  [ MANAGER APPROVAL ]
-             │         Safe Actions         Author Clarify     High-Risk / Refund
-             │        (e.g., Guides)     (Request Details)     Supervisor Review
-             │               │                   │                   │
-             │               │              Author Reply     Approve or Correct
+             │       Safe Actions Auto   Missing Identifiers  High Risk / Urgency>=4
+             │      (Urgency<4, Conf>=0.7) LangGraph interrupt  LangGraph interrupt
+             │               │           Author Command(resume) Supv Command(resume)
+             │               │                   │            Approve/Reject/Correct
+             │               │              Author Reply      (ChromaDB Feedback DB)
              │               │                   │                   │
              │               └───────────────────┴───────────────────┘
              │                                   │
              ↓                                   ↓
       [ 6. ARCHIVE ]                    [ 7. RESOLUTION ]
-       Junk Ignored                      Execute Action
-      (Zero AI Cost)                 (Auto-Reply / Route)
+     Instant Quarantine               LCEL Grounded Auto-Reply
+    (Zero LLM Token Cost)          (PromptTemplate | LLM | Parser)
+                                     Execute Action & Send Reply
                                                  │
                                                  ↓
                                        [ 8. SYSTEM MEMORY ]
-                                     Saved for Future Learning
+                                    Persistence & Checkpointing
                                ┌─────────────────┴─────────────────┐
                                ↓                                   ↓
-                         Conversation                     Learned Corrections
-                           History                          & Company Rules
-                     (Resume At Any Time)                 (ChromaDB Memory)
+                          SQLiteSaver                           ChromaDB
+                        (checkpoints.db)                    (Vector Storage)
+                     Thread State Recovery                Dynamic Few-Shot RAG
+                      & HITL Resumption                   & Policy Collections
 ```
 
 ### 🏷️ Plain-English Flow Guide (For Non-Technical Reviewers)
