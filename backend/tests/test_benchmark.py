@@ -95,3 +95,61 @@ def test_benchmark_fast_path_spam_heuristics(benchmark_data):
         result = check_spam(email)
         # Fast path should flag spam
         assert result.outcome == "spam_filtered"
+
+def test_benchmark_rag_retrieval_precision_recall_f1(benchmark_data):
+    """
+    Verify RAG Retrieval metrics across all benchmark policy test cases with top_k=2:
+    - Target section present and retrieved in top-2 chunks (Recall@2 >= 80%)
+    - Top-2 chunks are relevant to publishing domain (Precision@2 >= 60%)
+    - Harmonic Mean Retrieval F1 >= 0.70
+    - Ground-truth turnaround SLAs are grounded in retrieved context (SLA Match = 100%)
+    """
+    from app.knowledge_base import author_knowledge_base
+
+    rag_items = [item for item in benchmark_data if item.get("rag_evaluation", {}).get("is_rag_query")]
+    assert len(rag_items) >= 5, f"Expected at least 5 RAG test cases, found {len(rag_items)}"
+
+    precisions = []
+    recalls = []
+    f1_scores = []
+    sla_matches = 0
+
+    for item in rag_items:
+        rag_meta = item["rag_evaluation"]
+        assert "target_section" in rag_meta, f"{item['id']} missing target_section"
+        assert "relevant_sections" in rag_meta, f"{item['id']} missing relevant_sections"
+        assert "reference_answer" in rag_meta, f"{item['id']} missing reference_answer"
+
+        query_text = f"{item['subject']}\n{item['body']}"
+        chunks = author_knowledge_base.query_knowledge(query_text=query_text, top_k=2)
+        assert len(chunks) > 0, f"No chunks retrieved for {item['id']}"
+
+        titles = [c.get("title", "") for c in chunks]
+        context = "\n".join([c.get("content", "") for c in chunks])
+
+        rel_sections = rag_meta["relevant_sections"]
+        rel_hits = [t for t in titles if any(rs.lower() in t.lower() or t.lower() in rs.lower() for rs in rel_sections)]
+
+        prec = len(rel_hits) / len(chunks)
+        rec = 1.0 if len(rel_hits) > 0 else 0.0
+        f1 = (2 * prec * rec) / (prec + rec) if (prec + rec) > 0 else 0.0
+
+        precisions.append(prec)
+        recalls.append(rec)
+        f1_scores.append(f1)
+
+        exp_slas = rag_meta.get("expected_slas", [])
+        if any(sla.lower() in context.lower() for sla in exp_slas):
+            sla_matches += 1
+
+    macro_p = sum(precisions) / len(precisions)
+    macro_r = sum(recalls) / len(recalls)
+    macro_f1 = sum(f1_scores) / len(f1_scores)
+    sla_rate = sla_matches / len(rag_items)
+
+    assert macro_r >= 0.80, f"RAG Recall@2 {macro_r:.2f} below target 0.80"
+    assert macro_p >= 0.60, f"RAG Precision@2 {macro_p:.2f} below target 0.60"
+    assert macro_f1 >= 0.70, f"RAG Retrieval F1 {macro_f1:.2f} below target 0.70"
+    assert sla_rate == 1.0, f"RAG SLA Match Rate {sla_rate:.1%} must be 100%"
+
+

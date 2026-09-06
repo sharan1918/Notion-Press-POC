@@ -12,8 +12,15 @@
     "expected_missing_info": [],
     "rag_evaluation": {
       "is_rag_query": true,
+      "topic": "Amazon Live Distribution SLA",
+      "target_section": "Production SLAs & Go-Live Timelines Post-Proof Approval",
+      "relevant_sections": [
+        "Production SLAs & Go-Live Timelines Post-Proof Approval",
+        "Distribution Channels, EDI Feeds & Print-on-Demand (POD)"
+      ],
       "expected_slas": ["48-72 hours", "48 to 72 hours", "72 hours"],
-      "topic": "Amazon Live Distribution SLA"
+      "reference_answer": "Post digital proof approval, printer spooling and pre-flight validation take 48 to 72 hours. Your book goes live on Notion Press Store in 3 to 5 business days, and syndicates to Amazon India and Flipkart within 7 to 14 business days.",
+      "key_grounding_facts": ["48 to 72 hours", "proof approval", "Amazon", "live"]
     },
     "category": "RAG & Informational"
   },
@@ -30,8 +37,14 @@
     "expected_missing_info": [],
     "rag_evaluation": {
       "is_rag_query": true,
+      "topic": "Flipkart Retail Channel Sync SLA",
+      "target_section": "Distribution Channels, EDI Feeds & Print-on-Demand (POD)",
+      "relevant_sections": [
+        "Distribution Channels, EDI Feeds & Print-on-Demand (POD)"
+      ],
       "expected_slas": ["5 to 7 business days", "5-7 business days", "5 to 7 days", "EDI"],
-      "topic": "Flipkart Retail Channel Sync SLA"
+      "reference_answer": "Metadata is transmitted via automated EDI feeds. Because external retailer search engines index asynchronously, it takes 5 to 7 business days for new titles to appear in public search results on Flipkart.",
+      "key_grounding_facts": ["EDI feeds", "5 to 7 business days", "Flipkart", "search results"]
     },
     "category": "RAG & Informational"
   },
@@ -48,8 +61,15 @@
     "expected_missing_info": [],
     "rag_evaluation": {
       "is_rag_query": true,
+      "topic": "Publishing Onboarding Workflow",
+      "target_section": "Self-Publishing Roadmap & Submission Guidelines",
+      "relevant_sections": [
+        "Self-Publishing Roadmap & Submission Guidelines",
+        "Notion Press | Author Publishing Policy Handbook"
+      ],
       "expected_slas": ["publish", "manuscript", "step"],
-      "topic": "Publishing Onboarding Workflow"
+      "reference_answer": "Notion Press offers a 5-step publishing roadmap: project creation on notionpress.com, manuscript upload in MS Word or PDF, cover design upload, retail pricing with free ISBN allocation, and proof approval. Self-publishing is 100% free.",
+      "key_grounding_facts": ["5-step", "manuscript", "cover design", "free ISBN", "proof approval"]
     },
     "category": "RAG & Informational"
   },
@@ -276,8 +296,16 @@
     "expected_missing_info": [],
     "rag_evaluation": {
       "is_rag_query": true,
-      "expected_slas": ["formatting", "guidelines", "ebook", "kindle"],
-      "topic": "eBook Formatting Guidance"
+      "topic": "eBook Formatting Guidance",
+      "target_section": "Production SLAs & Go-Live Timelines Post-Proof Approval",
+      "relevant_sections": [
+        "Production SLAs & Go-Live Timelines Post-Proof Approval",
+        "Self-Publishing Roadmap & Submission Guidelines",
+        "ISBN Allocation, Barcodes & Revision Rules"
+      ],
+      "expected_slas": ["formatting", "guidelines", "ebook", "kindle", "3 to 5 business days"],
+      "reference_answer": "eBooks for Kindle go live within 3 to 5 business days post approval. Ensure your manuscript uses standard structural heading styles for automated NCX table of contents generation. Free ISBNs are allocated for eBook editions.",
+      "key_grounding_facts": ["Kindle", "3 to 5 business days", "eBooks", "table of contents", "ISBN"]
     },
     "category": "RAG & Informational"
   },
@@ -294,8 +322,14 @@
     "expected_missing_info": [],
     "rag_evaluation": {
       "is_rag_query": true,
-      "expected_slas": ["distribution", "international", "global", "days"],
-      "topic": "Global Distribution Network"
+      "topic": "Global Distribution Network",
+      "target_section": "Distribution Channels, EDI Feeds & Print-on-Demand (POD)",
+      "relevant_sections": [
+        "Distribution Channels, EDI Feeds & Print-on-Demand (POD)"
+      ],
+      "expected_slas": ["distribution", "international", "global", "days", "IngramSpark", "2 to 3 weeks"],
+      "reference_answer": "Paperback titles are eligible for global distribution across 150+ countries via Amazon global and the IngramSpark network, reaching international libraries and bookstores. Channel activation takes 2 to 3 weeks.",
+      "key_grounding_facts": ["IngramSpark", "150+ countries", "global network", "2 to 3 weeks", "libraries"]
     },
     "category": "RAG & Informational"
   },

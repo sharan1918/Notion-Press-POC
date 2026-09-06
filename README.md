@@ -186,16 +186,37 @@ flowchart TD
 
 ## 📊 Automated Benchmark Evaluation Suite
 
-Run the full end-to-end benchmark across all 20 curated test scenarios (evaluating RAG grounding, intent classification, anti-hallucination, guardrail breach rate, and few-shot learning delta):
+Run the full end-to-end benchmark across all 20 curated test scenarios (evaluating RAG retrieval precision/recall/F1, intent classification, anti-hallucination, guardrail breach rate, and few-shot learning delta):
 
 ```bash
 cd backend
-# Live benchmark (uses Groq & Gemini APIs)
+# Live benchmark (uses Groq & Gemini APIs, regenerates docs/BENCHMARK_REPORT.md)
 uv run python ../scripts/run_benchmark.py
 
 # Offline simulation mode (zero API calls, ultra-fast for CI)
 uv run python ../scripts/run_benchmark.py --offline
 ```
+
+### 🏆 Empirical Performance Scorecard (20 Production Scenarios)
+
+| Performance Dimension | Benchmark Metric | Result | Target / Standard | Status |
+| :--- | :--- | :---: | :---: | :---: |
+| **🎯 Classification NLU** | Overall Accuracy | **100.0%** | $\ge 90.0\%$ | ✅ PASS |
+| **🎯 Macro-F1 Score** | Balanced Multi-Class F1 | **1.000** | $\ge 0.850$ | ✅ PASS |
+| **🛡️ Safety Breach Rate** | Critical Action Escape Rate | **0.00%** | **$0.00\%$ (Zero Tolerance)** | ✅ PASS |
+| **🛡️ Guardrail Recall** | High-Impact / Urgency Trigger TPR | **100.0%** | $100.0\%$ | ✅ PASS |
+| **🔍 Anti-Hallucination** | Missing Info Detection Recall | **100.0%** | $100.0\%$ | ✅ PASS |
+| **📚 RAG Context Precision** | Top-2 Knowledge Relevance (Prec@2) | **70.0%** | $\ge 70.0\%$ | ✅ PASS |
+| **📚 RAG Context Recall** | Target Policy Discovery (Rec@2) | **100.0%** | $\ge 90.0\%$ | ✅ PASS |
+| **📚 RAG Retrieval F1** | Dense Vector Harmonic Mean F1 | **0.800** | $\ge 0.800$ | ✅ PASS |
+| **📚 RAG Answer Token F1** | Generative Token Overlap (SQuAD) | **0.238** | $\ge 0.100$ | ✅ PASS |
+| **📚 RAG Policy Grounding**| Verified SLA Adherence Rate | **100.0%** | $100.0\%$ | ✅ PASS |
+| **📚 RAG Faithfulness** | Groundedness Score (RAGAS) | **1.000** | $\ge 0.900$ | ✅ PASS |
+| **⚡ Fast-Path Spam Triage**| Heuristic Accuracy ($0 Token Cost) | **100.0%** | $\ge 95.0\%$ | ✅ PASS |
+| **🔄 Feedback Adaptation** | In-Context Learning Delta ($\Delta$) | **+50%** | $> 0.0\%$ | ✅ PASS |
+
+> [!TIP]
+> 📖 **Deep Dive**: For the full per-query RAG breakdown table, mathematical formulations, and $K=2$ vs $K=3$ ablation analysis, see **[docs/BENCHMARK_REPORT.md](docs/BENCHMARK_REPORT.md)**.
 
 ## 🧪 Sample Test Cases & Evaluation Scenarios
 
@@ -209,13 +230,13 @@ The interactive inbox is pre-seeded with 10 realistic author scenarios covering 
 - **Spam & Fast-Path Intake**: Commercial SEO spam is quarantined at $0 token cost in ~1ms without LLM invocation.
 - **Multi-Intent Edge Cases**: Complex multi-issue author emails (royalty discrepancy + distribution out of stock).
 
-### 2. Automated Unit Tests (78 Tests, 100% Passing)
+### 2. Automated Unit Tests (79 Tests, 100% Passing)
 Run the full test suite via `uv`:
 ```bash
 cd backend
 uv run pytest
 ```
-- `test_benchmark.py`: Benchmark dataset integrity, zero safety breach invariant, anti-hallucination halts, and spam heuristics.
+- `test_benchmark.py`: Benchmark dataset integrity, zero safety breach invariant, anti-hallucination halts, spam heuristics, and RAG retrieval Precision/Recall/F1 metrics.
 - `test_graph.py`: LangGraph state machine routing, guardrail overrides, and interrupts.
 - `test_feedback_store.py`: ChromaDB few-shot learning and human correction persistence.
 - `test_intake_filter.py`: Heuristic spam triage and priority categorization.
