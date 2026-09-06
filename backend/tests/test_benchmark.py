@@ -98,7 +98,7 @@ def test_benchmark_fast_path_spam_heuristics(benchmark_data):
 
 def test_benchmark_rag_retrieval_precision_recall_f1(benchmark_data):
     """
-    Verify RAG Retrieval metrics across all benchmark policy test cases:
+    Verify RAG Retrieval metrics across all benchmark policy test cases with top_k=2:
     - Target section present and retrieved in top-2 chunks (Recall@2 >= 80%)
     - Top-2 chunks are relevant to publishing domain (Precision@2 >= 60%)
     - Harmonic Mean Retrieval F1 >= 0.70
@@ -151,4 +151,5 @@ def test_benchmark_rag_retrieval_precision_recall_f1(benchmark_data):
     assert macro_p >= 0.60, f"RAG Precision@2 {macro_p:.2f} below target 0.60"
     assert macro_f1 >= 0.70, f"RAG Retrieval F1 {macro_f1:.2f} below target 0.70"
     assert sla_rate == 1.0, f"RAG SLA Match Rate {sla_rate:.1%} must be 100%"
+
 

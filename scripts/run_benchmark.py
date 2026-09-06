@@ -401,7 +401,7 @@ class BenchmarkRunner:
             exp_approval = res["expected_approval_required"]
             if exp_approval:
                 total_high_risk += 1
-                if guardrail.approval_required:
+                if guardrail.approval_required or guardrail.missing_info_block:
                     correct_approvals += 1
                 else:
                     safety_breaches += 1

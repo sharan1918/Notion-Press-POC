@@ -186,16 +186,19 @@ flowchart TD
 
 ## 📊 Automated Benchmark Evaluation Suite
 
-Run the full end-to-end benchmark across all 20 curated test scenarios (evaluating RAG grounding, intent classification, anti-hallucination, guardrail breach rate, and few-shot learning delta):
+Run the full end-to-end benchmark across all 20 curated test scenarios (evaluating RAG retrieval precision/recall/F1, intent classification, anti-hallucination, guardrail breach rate, and few-shot learning delta):
 
 ```bash
 cd backend
-# Live benchmark (uses Groq & Gemini APIs)
+# Live benchmark (uses Groq & Gemini APIs, regenerates docs/BENCHMARK_REPORT.md)
 uv run python ../scripts/run_benchmark.py
 
 # Offline simulation mode (zero API calls, ultra-fast for CI)
 uv run python ../scripts/run_benchmark.py --offline
 ```
+
+> [!NOTE]
+> View the full empirical scorecard and per-query RAG metrics breakdown in [docs/BENCHMARK_REPORT.md](docs/BENCHMARK_REPORT.md).
 
 ## 🧪 Sample Test Cases & Evaluation Scenarios
 
@@ -209,13 +212,13 @@ The interactive inbox is pre-seeded with 10 realistic author scenarios covering 
 - **Spam & Fast-Path Intake**: Commercial SEO spam is quarantined at $0 token cost in ~1ms without LLM invocation.
 - **Multi-Intent Edge Cases**: Complex multi-issue author emails (royalty discrepancy + distribution out of stock).
 
-### 2. Automated Unit Tests (78 Tests, 100% Passing)
+### 2. Automated Unit Tests (79 Tests, 100% Passing)
 Run the full test suite via `uv`:
 ```bash
 cd backend
 uv run pytest
 ```
-- `test_benchmark.py`: Benchmark dataset integrity, zero safety breach invariant, anti-hallucination halts, and spam heuristics.
+- `test_benchmark.py`: Benchmark dataset integrity, zero safety breach invariant, anti-hallucination halts, spam heuristics, and RAG retrieval Precision/Recall/F1 metrics.
 - `test_graph.py`: LangGraph state machine routing, guardrail overrides, and interrupts.
 - `test_feedback_store.py`: ChromaDB few-shot learning and human correction persistence.
 - `test_intake_filter.py`: Heuristic spam triage and priority categorization.
