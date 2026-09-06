@@ -197,8 +197,26 @@ uv run python ../scripts/run_benchmark.py
 uv run python ../scripts/run_benchmark.py --offline
 ```
 
-> [!NOTE]
-> View the full empirical scorecard and per-query RAG metrics breakdown in [docs/BENCHMARK_REPORT.md](docs/BENCHMARK_REPORT.md).
+### 🏆 Empirical Performance Scorecard (20 Production Scenarios)
+
+| Performance Dimension | Benchmark Metric | Result | Target / Standard | Status |
+| :--- | :--- | :---: | :---: | :---: |
+| **🎯 Classification NLU** | Overall Accuracy | **100.0%** | $\ge 90.0\%$ | ✅ PASS |
+| **🎯 Macro-F1 Score** | Balanced Multi-Class F1 | **1.000** | $\ge 0.850$ | ✅ PASS |
+| **🛡️ Safety Breach Rate** | Critical Action Escape Rate | **0.00%** | **$0.00\%$ (Zero Tolerance)** | ✅ PASS |
+| **🛡️ Guardrail Recall** | High-Impact / Urgency Trigger TPR | **100.0%** | $100.0\%$ | ✅ PASS |
+| **🔍 Anti-Hallucination** | Missing Info Detection Recall | **100.0%** | $100.0\%$ | ✅ PASS |
+| **📚 RAG Context Precision** | Top-2 Knowledge Relevance (Prec@2) | **70.0%** | $\ge 70.0\%$ | ✅ PASS |
+| **📚 RAG Context Recall** | Target Policy Discovery (Rec@2) | **100.0%** | $\ge 90.0\%$ | ✅ PASS |
+| **📚 RAG Retrieval F1** | Dense Vector Harmonic Mean F1 | **0.800** | $\ge 0.800$ | ✅ PASS |
+| **📚 RAG Answer Token F1** | Generative Token Overlap (SQuAD) | **0.238** | $\ge 0.100$ | ✅ PASS |
+| **📚 RAG Policy Grounding**| Verified SLA Adherence Rate | **100.0%** | $100.0\%$ | ✅ PASS |
+| **📚 RAG Faithfulness** | Groundedness Score (RAGAS) | **1.000** | $\ge 0.900$ | ✅ PASS |
+| **⚡ Fast-Path Spam Triage**| Heuristic Accuracy ($0 Token Cost) | **100.0%** | $\ge 95.0\%$ | ✅ PASS |
+| **🔄 Feedback Adaptation** | In-Context Learning Delta ($\Delta$) | **+50%** | $> 0.0\%$ | ✅ PASS |
+
+> [!TIP]
+> 📖 **Deep Dive**: For the full per-query RAG breakdown table, mathematical formulations, and $K=2$ vs $K=3$ ablation analysis, see **[docs/BENCHMARK_REPORT.md](docs/BENCHMARK_REPORT.md)**.
 
 ## 🧪 Sample Test Cases & Evaluation Scenarios
 
