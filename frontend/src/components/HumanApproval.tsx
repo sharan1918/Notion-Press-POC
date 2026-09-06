@@ -32,9 +32,18 @@ export default function HumanApproval({ state, onApprove, onReject, onCorrect }:
         <h3 className="text-sm sm:text-base font-bold text-amber-900 dark:text-amber-300">Pending Human Approval</h3>
       </div>
       
-      <p className="text-xs sm:text-sm mb-5 text-muted-foreground leading-relaxed">
+      <p className="text-xs sm:text-sm mb-3 text-muted-foreground leading-relaxed">
         The AI recommended an action that requires human review before execution.
       </p>
+
+      {state.recommended_action?.target_team && (
+        <div className="mb-4 px-3.5 py-2 bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 rounded-lg text-xs flex items-center gap-2">
+          <span className="font-semibold text-amber-900 dark:text-amber-300">Target Destination:</span>
+          <span className="text-amber-800 dark:text-amber-200">
+            Will be dispatched to <strong className="font-bold underline decoration-amber-500/50">{state.recommended_action.target_team} Team</strong> upon approval
+          </span>
+        </div>
+      )}
 
       {!showCorrection ? (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
