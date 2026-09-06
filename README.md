@@ -162,7 +162,8 @@ flowchart TD
 
 - 📝 **[Design Decisions, Limitations & Roadmap](docs/DESIGN_DECISIONS_AND_LIMITATIONS.md)**: Dedicated assessment deliverable detailing core decisions, invariants, current limitations, and production upgrades.
 - 📐 **[System Design & Architecture](docs/SYSTEM_DESIGN.md)**: Detailed breakdown of design decisions, multi-provider failover, HITL states, and production roadmap.
-- 🧪 **[Sample Test Cases & Evaluation Scenarios](docs/SAMPLE_TEST_CASES.md)**: 10 realistic author scenarios in the mock inbox + 74 automated unit tests in `pytest`.
+- 🧪 **[Sample Test Cases & Evaluation Scenarios](docs/SAMPLE_TEST_CASES.md)**: 10 realistic author scenarios in the mock inbox + 78 automated unit tests in `pytest`.
+- 📊 **[Automated Benchmark Evaluation Report](docs/BENCHMARK_REPORT.md)**: End-to-end benchmark evaluation across all 7 pillars (RAG faithfulness, SLA verification, classification Macro-F1, anti-hallucination halts, zero-breach safety guardrails, and few-shot learning delta).
 
 ## 🚀 Quick Start
 
@@ -183,6 +184,19 @@ flowchart TD
    ```
 4. **Open** `http://localhost:5173`
 
+## 📊 Automated Benchmark Evaluation Suite
+
+Run the full end-to-end benchmark across all 20 curated test scenarios (evaluating RAG grounding, intent classification, anti-hallucination, guardrail breach rate, and few-shot learning delta):
+
+```bash
+cd backend
+# Live benchmark (uses Groq & Gemini APIs)
+uv run python ../scripts/run_benchmark.py
+
+# Offline simulation mode (zero API calls, ultra-fast for CI)
+uv run python ../scripts/run_benchmark.py --offline
+```
+
 ## 🧪 Sample Test Cases & Evaluation Scenarios
 
 The system includes both interactive scenario evaluation emails and a complete automated regression test suite:
@@ -195,12 +209,13 @@ The interactive inbox is pre-seeded with 10 realistic author scenarios covering 
 - **Spam & Fast-Path Intake**: Commercial SEO spam is quarantined at $0 token cost in ~1ms without LLM invocation.
 - **Multi-Intent Edge Cases**: Complex multi-issue author emails (royalty discrepancy + distribution out of stock).
 
-### 2. Automated Unit Tests (74 Tests, 100% Passing)
+### 2. Automated Unit Tests (78 Tests, 100% Passing)
 Run the full test suite via `uv`:
 ```bash
 cd backend
 uv run pytest
 ```
+- `test_benchmark.py`: Benchmark dataset integrity, zero safety breach invariant, anti-hallucination halts, and spam heuristics.
 - `test_graph.py`: LangGraph state machine routing, guardrail overrides, and interrupts.
 - `test_feedback_store.py`: ChromaDB few-shot learning and human correction persistence.
 - `test_intake_filter.py`: Heuristic spam triage and priority categorization.

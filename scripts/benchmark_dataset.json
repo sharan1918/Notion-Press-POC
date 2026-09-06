@@ -1,0 +1,334 @@
+[
+  {
+    "id": "BM-01",
+    "sender": "rahul.menon@example.com",
+    "sender_name": "Rahul Menon",
+    "subject": "When will my book go live?",
+    "body": "Hello, I approved the final proof two days ago. When will my book be available for purchase on Amazon?",
+    "expected_intent": "publishing_status",
+    "expected_urgency": 1,
+    "expected_action": "auto_reply",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": true,
+      "expected_slas": ["48-72 hours", "48 to 72 hours", "72 hours"],
+      "topic": "Amazon Live Distribution SLA"
+    },
+    "category": "RAG & Informational"
+  },
+  {
+    "id": "BM-02",
+    "sender": "meera.nair@example.com",
+    "sender_name": "Meera Nair",
+    "subject": "Book not showing on Flipkart",
+    "body": "My book has been live on your store for a week, but I still can't find it on Flipkart. Is there a delay in distribution?",
+    "expected_intent": "distribution",
+    "expected_urgency": 2,
+    "expected_action": "auto_reply",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": true,
+      "expected_slas": ["5 to 7 business days", "5-7 business days", "5 to 7 days", "EDI"],
+      "topic": "Flipkart Retail Channel Sync SLA"
+    },
+    "category": "RAG & Informational"
+  },
+  {
+    "id": "BM-03",
+    "sender": "new.author@example.com",
+    "sender_name": "Newcomer Author",
+    "subject": "How do I start self-publishing?",
+    "body": "Hi Notion Press, I have a manuscript ready and I want to self-publish. What are the steps to get started?",
+    "expected_intent": "general_inquiry",
+    "expected_urgency": 1,
+    "expected_action": "auto_reply",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": true,
+      "expected_slas": ["publish", "manuscript", "step"],
+      "topic": "Publishing Onboarding Workflow"
+    },
+    "category": "RAG & Informational"
+  },
+  {
+    "id": "BM-04",
+    "sender": "anita.desai@example.com",
+    "sender_name": "Anita Desai",
+    "subject": "URGENT: Pages smudged in my book",
+    "body": "I just received my author copies and the printing quality is terrible! Pages 45-50 are completely smudged and unreadable. This is unacceptable.",
+    "expected_intent": "printing_issue",
+    "expected_urgency": 3,
+    "expected_action": "request_more_info",
+    "expected_approval_required": false,
+    "expected_missing_info": ["order_id", "photo_proof"],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Missing Info & Anti-Hallucination"
+  },
+  {
+    "id": "BM-05",
+    "sender": "suresh.raina@example.com",
+    "sender_name": "Suresh Raina",
+    "subject": "Binding detached on delivery",
+    "body": "The front cover and first 10 pages fell apart upon opening the package. I need a replacement right away.",
+    "expected_intent": "printing_issue",
+    "expected_urgency": 3,
+    "expected_action": "request_more_info",
+    "expected_approval_required": false,
+    "expected_missing_info": ["order_id", "photo_proof"],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Missing Info & Anti-Hallucination"
+  },
+  {
+    "id": "BM-06",
+    "sender": "karthik.s@example.com",
+    "sender_name": "Karthik Subramanian",
+    "subject": "Wrong ISBN on my published book!!",
+    "body": "I am shocked to see that the ISBN printed on my physical book does not match the one registered. Please fix this immediately, this is a major error. ISBN is 978-1-23456-789-0.",
+    "expected_intent": "isbn_metadata",
+    "expected_urgency": 4,
+    "expected_action": "modify_metadata",
+    "expected_approval_required": true,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Safety Guardrail & High Impact"
+  },
+  {
+    "id": "BM-07",
+    "sender": "angry.author@example.com",
+    "sender_name": "Angry Author",
+    "subject": "I've waited 3 months, unacceptable!",
+    "body": "I have been waiting for 3 months and there is still no resolution on my ticket. I demand to speak to a manager right now and want a full ₹10,000 refund!",
+    "expected_intent": "complaint",
+    "expected_urgency": 5,
+    "expected_action": "escalate",
+    "expected_approval_required": true,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Safety Guardrail & High Impact"
+  },
+  {
+    "id": "BM-08",
+    "sender": "priya.sharma@example.com",
+    "sender_name": "Priya Sharma",
+    "subject": "Royalties not credited for June",
+    "body": "Hi team, I haven't received my royalty payout for the month of June. It was supposed to be credited by the 5th. Can you please check? My author code is NP-9942.",
+    "expected_intent": "royalty_payment",
+    "expected_urgency": 2,
+    "expected_action": "route_to_team",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Departmental Routing"
+  },
+  {
+    "id": "BM-09",
+    "sender": "vikram.seth@example.com",
+    "sender_name": "Vikram Seth",
+    "subject": "Need to change my book cover",
+    "body": "Hi, I have a new cover design for my upcoming book 'Echoes of Silence'. Can you please update the file before it goes to print?",
+    "expected_intent": "cover_design",
+    "expected_urgency": 2,
+    "expected_action": "route_to_team",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Departmental Routing"
+  },
+  {
+    "id": "BM-10",
+    "sender": "deepa.k@example.com",
+    "sender_name": "Deepa Krishnan",
+    "subject": "Royalties wrong + book not on Amazon",
+    "body": "My royalty report for last month seems incorrect with ₹2,400 missing, and on top of that, my book is showing out of stock on Amazon. What is going on?",
+    "expected_intent": "royalty_payment",
+    "expected_urgency": 3,
+    "expected_action": "route_to_team",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Multi-Intent Compound"
+  },
+  {
+    "id": "BM-11",
+    "sender": "spambot@spamservices.com",
+    "sender_name": "SpamBot Inc",
+    "subject": "Boost your book sales with SEO!",
+    "body": "Want to be a bestseller? Buy our guaranteed SEO services for just $99. Click here to increase your rankings.",
+    "expected_intent": "spam",
+    "expected_urgency": 1,
+    "expected_action": "archive",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "is_spam": true,
+    "category": "Fast-Path Spam Filter"
+  },
+  {
+    "id": "BM-12",
+    "sender": "marketing@marketing-blast.com",
+    "sender_name": "Crypto Fast Wealth",
+    "subject": "Exclusive Investment Opportunity for Authors - Guaranteed Returns",
+    "body": "Earn 500% guaranteed returns on your royalties. Click here to buy now! Limited time offer!",
+    "expected_intent": "spam",
+    "expected_urgency": 1,
+    "expected_action": "archive",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "is_spam": true,
+    "category": "Fast-Path Spam Filter"
+  },
+  {
+    "id": "BM-13",
+    "sender": "rohit.verma@example.com",
+    "sender_name": "Rohit Verma",
+    "subject": "Requesting refund for damaged batch",
+    "body": "All 50 copies of my order #NP-ORD-7711 arrived with water damage. I request an immediate refund of ₹8,500 to my original payment method.",
+    "expected_intent": "printing_issue",
+    "expected_urgency": 4,
+    "expected_action": "route_to_team",
+    "expected_approval_required": true,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Safety Guardrail & High Impact"
+  },
+  {
+    "id": "BM-14",
+    "sender": "sneha.kapoor@example.com",
+    "sender_name": "Sneha Kapoor",
+    "subject": "Barcode unreadable by scanner",
+    "body": "Bookstores report that the barcode on the back cover cannot be scanned at checkout. The ISBN registered is 978-81-923456-1-1. We need barcode regeneration.",
+    "expected_intent": "isbn_metadata",
+    "expected_urgency": 4,
+    "expected_action": "modify_metadata",
+    "expected_approval_required": true,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Safety Guardrail & High Impact"
+  },
+  {
+    "id": "BM-15",
+    "sender": "tanya.b@example.com",
+    "sender_name": "Tanya Bhatia",
+    "subject": "Royalty payout schedule inquiry",
+    "body": "Could you clarify on which day of the month international sales royalties are computed and credited to our bank accounts?",
+    "expected_intent": "royalty_payment",
+    "expected_urgency": 1,
+    "expected_action": "route_to_team",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Departmental Routing"
+  },
+  {
+    "id": "BM-16",
+    "sender": "manish.g@example.com",
+    "sender_name": "Manish Gupta",
+    "subject": "Spine thickness adjustment for 400 pages",
+    "body": "Our interior page count increased from 320 to 400 pages. Please adjust the cover spine width accordingly before finalizing print files.",
+    "expected_intent": "cover_design",
+    "expected_urgency": 2,
+    "expected_action": "route_to_team",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Departmental Routing"
+  },
+  {
+    "id": "BM-17",
+    "sender": "aarav.p@example.com",
+    "sender_name": "Aarav Patel",
+    "subject": "Kindle eBook formatting questions",
+    "body": "How do I ensure my table of contents works with clickable NCX navigation on Amazon Kindle? Are there specific formatting guidelines?",
+    "expected_intent": "general_inquiry",
+    "expected_urgency": 1,
+    "expected_action": "auto_reply",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": true,
+      "expected_slas": ["formatting", "guidelines", "ebook", "kindle"],
+      "topic": "eBook Formatting Guidance"
+    },
+    "category": "RAG & Informational"
+  },
+  {
+    "id": "BM-18",
+    "sender": "divya.n@example.com",
+    "sender_name": "Divya Nambiar",
+    "subject": "Expanded distribution to international libraries",
+    "body": "Is my paperback book eligible for IngramSpark global distribution to US and UK libraries? What is the listing time?",
+    "expected_intent": "distribution",
+    "expected_urgency": 2,
+    "expected_action": "auto_reply",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": true,
+      "expected_slas": ["distribution", "international", "global", "days"],
+      "topic": "Global Distribution Network"
+    },
+    "category": "RAG & Informational"
+  },
+  {
+    "id": "BM-19",
+    "sender": "ambiguous.author@example.com",
+    "sender_name": "Ambiguous Inquirer",
+    "subject": "Paper stock texture feels different",
+    "body": "The paper in my latest batch feels slightly lighter than my first order 6 months ago. Is this expected for 80gsm natural cream?",
+    "expected_intent": "printing_issue",
+    "expected_urgency": 2,
+    "expected_action": "route_to_team",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Dynamic Few-Shot Learning Exemplar"
+  },
+  {
+    "id": "BM-20",
+    "sender": "paraphrased.author@example.com",
+    "sender_name": "Paraphrased Inquirer",
+    "subject": "Paper GSM quality variance in second print",
+    "body": "I noticed the natural cream 80 gsm paper density differs between print run 1 and print run 2. Need QA team clarification.",
+    "expected_intent": "printing_issue",
+    "expected_urgency": 2,
+    "expected_action": "route_to_team",
+    "expected_approval_required": false,
+    "expected_missing_info": [],
+    "rag_evaluation": {
+      "is_rag_query": false
+    },
+    "category": "Dynamic Few-Shot Learning Exemplar"
+  }
+]
