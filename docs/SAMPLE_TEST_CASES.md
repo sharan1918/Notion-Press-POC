@@ -231,9 +231,9 @@ This test demonstrates the core assessment requirement: *“Add a simple way for
 
  *
 
-## 🧪 Automated Unit Test Cases (74 Tests, 100% Passing)
+## 🧪 Automated Unit Test Cases (80 Tests, 100% Passing)
 
-For automated programmatic evaluation, the backend test suite executes 74 regression unit tests covering all safety and routing invariants:
+For automated programmatic evaluation, the backend test suite executes 80 regression unit tests covering all safety and routing invariants:
 
 ```bash
 cd backend
@@ -242,11 +242,12 @@ uv run pytest
 
 | Test Suite | File | Tests | Focus Areas |
 | --- | --- | --- | --- |
-| **Workflow Routing** | `tests/test_graph.py` | 10 | LangGraph state transitions, conditional branching, interrupts. |
+| **Workflow Routing** | `tests/test_graph.py` | 11 | LangGraph state transitions, conditional branching, interrupts, 3-tier model failover. |
+| **Benchmark Dataset** | `tests/test_benchmark.py` | 5 | Dataset integrity, distribution, ground truth validation. |
 | **Feedback Learning** | `tests/test_feedback_store.py` | 7 | ChromaDB vector exemplar insertion, cosine retrieval, JSON fallback. |
 | **Intake Triage** | `tests/test_intake_filter.py` | 15 | Heuristic spam detection, fast-path archiving, token cost limits. |
 | **Intent Caching** | `tests/test_intent_cache.py` | 9 | Cosine similarity semantic caching (0.90 threshold). |
 | **Policy RAG KB** | `tests/test_knowledge_base.py` | 7 | PDF extraction, chunking, dynamic ChromaDB indexing & auto-seeding. |
 | **API Endpoints** | `tests/test_main.py` | 9 | REST endpoints, SSE streaming (`/api/process-stream`), CORS. |
 | **Security & Safety** | `tests/test_security.py` | 17 | Prompt injection defense, delimiter isolation, rate limiting. |
-| **Total** | **7 Suites** | **74** | **100% Pass Rate** |
+| **Total** | **8 Suites** | **80** | **100% Pass Rate** |

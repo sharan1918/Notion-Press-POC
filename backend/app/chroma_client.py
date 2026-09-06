@@ -70,6 +70,9 @@ def _safe_print(msg: str):
             pass
 
 
+_PRIMARY_INIT_LOGGED = False
+_FALLBACK_INIT_LOGGED = False
+
 class ResilientEmbeddingFunction(chromadb.EmbeddingFunction[chromadb.api.types.Documents]):
     """
     Resilient Hybrid Embedding Function:
@@ -80,6 +83,7 @@ class ResilientEmbeddingFunction(chromadb.EmbeddingFunction[chromadb.api.types.D
     """
 
     def __init__(self, api_key_env_var: str = "GOOGLE_API_KEY", dimension: int = 384):
+        global _PRIMARY_INIT_LOGGED, _FALLBACK_INIT_LOGGED
         self.dimension = dimension
         self.api_key_env_var = api_key_env_var
         self._gemini_ef = None
@@ -95,17 +99,21 @@ class ResilientEmbeddingFunction(chromadb.EmbeddingFunction[chromadb.api.types.D
                     dimension=dimension,
                     api_key_env_var=api_key_env_var,
                 )
-                init_msg = f"[Embeddings] Initialized primary embedding model: Google Gemini Cloud ('models/gemini-embedding-001', dimension={dimension})"
-                _safe_print(init_msg)
-                logger.info(init_msg)
+                if not _PRIMARY_INIT_LOGGED:
+                    init_msg = f"[Embeddings] Initialized primary embedding model: Google Gemini Cloud ('models/gemini-embedding-001', dimension={dimension})"
+                    _safe_print(init_msg)
+                    logger.info(init_msg)
+                    _PRIMARY_INIT_LOGGED = True
             except Exception as e:
                 warn_msg = f"[Embeddings] Failed to initialize Google Gemini embedding: {e}. Will use ONNX fallback."
                 _safe_print(warn_msg)
                 logger.warning(warn_msg)
         else:
-            init_msg = f"[Embeddings] No valid Google API key found. Using fallback embedding model: Local ONNX ('all-MiniLM-L6-v2', dimension={dimension})"
-            _safe_print(init_msg)
-            logger.info(init_msg)
+            if not _FALLBACK_INIT_LOGGED:
+                init_msg = f"[Embeddings] No valid Google API key found. Using fallback embedding model: Local ONNX ('all-MiniLM-L6-v2', dimension={dimension})"
+                _safe_print(init_msg)
+                logger.info(init_msg)
+                _FALLBACK_INIT_LOGGED = True
 
     def __call__(self, input: chromadb.api.types.Documents) -> chromadb.api.types.Embeddings:
         if self._gemini_ef is not None:
@@ -123,9 +131,12 @@ class ResilientEmbeddingFunction(chromadb.EmbeddingFunction[chromadb.api.types.D
         with self._lock:
             if self._onnx_ef is None:
                 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
-                init_msg = "[Embeddings] Initialized fallback local ONNX model ('all-MiniLM-L6-v2', 384-dim)"
-                _safe_print(init_msg)
-                logger.info(init_msg)
+                global _FALLBACK_INIT_LOGGED
+                if not _FALLBACK_INIT_LOGGED:
+                    init_msg = "[Embeddings] Initialized fallback local ONNX model ('all-MiniLM-L6-v2', 384-dim)"
+                    _safe_print(init_msg)
+                    logger.info(init_msg)
+                    _FALLBACK_INIT_LOGGED = True
                 self._onnx_ef = DefaultEmbeddingFunction()
         embeddings = self._onnx_ef(input)
         fallback_msg = f"[Embeddings] Generated {len(input)} vector(s) using model: 'all-MiniLM-L6-v2' (Local ONNX Fallback, 384-dim)"
@@ -148,17 +159,26 @@ class ResilientEmbeddingFunction(chromadb.EmbeddingFunction[chromadb.api.types.D
 
     @staticmethod
     def build_from_config(config: dict) -> "ResilientEmbeddingFunction":
-        return ResilientEmbeddingFunction(**config)
+        return get_shared_embedding_function(
+            api_key_env_var=config.get("api_key_env_var", "GOOGLE_API_KEY"),
+            dimension=config.get("dimension", 384),
+        )
 
 
 _EMBEDDING_FUNCTION = None
 
-def get_shared_embedding_function() -> chromadb.EmbeddingFunction:
+def get_shared_embedding_function(
+    api_key_env_var: str = "GOOGLE_API_KEY",
+    dimension: int = 384
+) -> "ResilientEmbeddingFunction":
     """Return the shared resilient embedding function singleton."""
     global _EMBEDDING_FUNCTION
     with _CLIENT_LOCK:
         if _EMBEDDING_FUNCTION is None:
-            _EMBEDDING_FUNCTION = ResilientEmbeddingFunction()
+            _EMBEDDING_FUNCTION = ResilientEmbeddingFunction(
+                api_key_env_var=api_key_env_var,
+                dimension=dimension
+            )
         return _EMBEDDING_FUNCTION
 
 

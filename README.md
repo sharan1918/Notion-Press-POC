@@ -29,12 +29,12 @@ flowchart TD
 
     CACHE_CHECK["Semantic Intent Cache<br/>ChromaDB Cosine Embedding"]:::amberBox
 
-    AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.6 Failover"]:::blueBox
+    AI["LangGraph State Machine<br/>Groq 120B / Gemini 3.6 / Groq 20B Failover"]:::blueBox
 
     GUARD["[ 5. SAFETY RULES & POLICY ]<br/><b>Deterministic Engine (policy.py)</b><br/>Evaluates Intent, Thresholds & Risk"]:::greenBox
 
     RAG_REPLY["[ RAG AUTO-REPLY ]<br/>Grounded Notion Press Policy<br/><i>(Personalized with New Author Name)</i>"]:::greenBox
-    TEAM_ROUTE["[ ROUTE TO TEAM ]<br/>Dispatched to Department<br/><i>(Finance, QA/Printing, Design)</i>"]:::cyanBox
+    TEAM_ROUTE["[ ROUTE TO TEAM ]<br/>Dispatched to Department<br/><i>(Finance, QA/Printing, Design, Metadata)</i>"]:::cyanBox
     NEED_INFO["[ MISSING INFO ]<br/>LangGraph interrupt()<br/><i>(ISBN or Order ID Absent)</i>"]:::purpleBox
     HITL["[ SUPERVISOR APPROVAL ]<br/>LangGraph interrupt()<br/><i>(Urgency &gt;= 4, Conf &lt; 70%, High Risk)</i>"]:::purpleBox
 
@@ -142,7 +142,7 @@ flowchart TD
 | **`[ 2. USER INTERFACE ]`** | Support agents view real-time triage, live streaming analysis, and approval cards. | Clear, progressive UI without loading delays. |
 | **`[ 3. BACKEND GATEWAY ]`** | High-performance FastAPI server coordinates the stateful workflow. | Reliable, scalable, and secure API tier. |
 | **`[ 4. SMART INTAKE FILTER ]`** | Filters junk spam instantly and matches repeated inquiries from semantic cache. | **$0 token cost** — saves money and responds in under 5ms. |
-| **`[ 5. SAFETY RULES & POLICY ]`** | Pure Python deterministic engine (`policy.py`) routes on explicit criteria: <br>• **`[ RAG AUTO-REPLY ]`**: Informational queries (*general_inquiry*, *publishing_status*, *distribution*) via ChromaDB policy chunks.<br>• **`[ ROUTE TO TEAM ]`**: Departmental requests (*royalty_payment* ➔ Finance, *printing_issue* ➔ QA, *cover_design* ➔ Design).<br>• **`[ MISSING INFO ]`**: Halts if critical identifiers are absent.<br>• **`[ SUPERVISOR APPROVAL ]`**: Urgency &ge; 4, Confidence &lt; 70%, or High Risk. | Eliminates AI hallucination and ensures safe, departmental dispatch. |
+| **`[ 5. SAFETY RULES & POLICY ]`** | Pure Python deterministic engine (`policy.py`) routes on explicit criteria: <br>• **`[ RAG AUTO-REPLY ]`**: Informational queries (*general_inquiry*, *publishing_status*, *distribution*) via ChromaDB policy chunks.<br>• **`[ ROUTE TO TEAM ]`**: Departmental requests (*royalty_payment* ➔ Finance, *printing_issue* ➔ QA, *cover_design* ➔ Design, *isbn_metadata* ➔ Metadata, *complaint* ➔ Senior Support). Both UI cards and final execution banners explicitly indicate the assigned destination team.<br>• **`[ MISSING INFO ]`**: Halts if critical identifiers are absent.<br>• **`[ SUPERVISOR APPROVAL ]`**: Urgency &ge; 4, Confidence &lt; 70%, or High Risk. | Eliminates AI hallucination and ensures safe, departmental dispatch. |
 | **`[ 6. ARCHIVE ]`** | Commercial marketing and spam emails are quarantined without calling AI. | Keeps human agents focused strictly on real authors. |
 | **`[ 7. RESOLUTION ]`** | Policy-grounded reply is drafted and approved actions are executed automatically. | Fast, consistent, and courteous author support. |
 | **`[ 8. SYSTEM MEMORY ]`** | Saves thread states and supervisor corrections into persistent vector storage. | AI remembers conversations and learns from past corrections. |
@@ -151,12 +151,12 @@ flowchart TD
 
 - **Why LangGraph?** We need conditional branching, human-in-the-loop interruption, resumability, and stopping conditions. LangGraph provides these as first-class primitives.
 - **Why SSE Streaming & Auto-Processing?** Clicking an email automatically streams LangGraph node events via Server-Sent Events (SSE) in real-time and caches results. This eliminates manual trigger delays and provides progressive UI feedback while preserving API efficiency.
-- **Why Multi-Provider Failover (Groq + Gemini 3.6 Flash)?** Primary classification uses Groq (`openai/gpt-oss-120b`) for sub-second inference speeds (~500 tokens/sec), with seamless automatic fallback to Gemini 3.6 Flash if Groq rate limits or network issues occur.
+- **Why 3-Tier Resilient Failover (Groq 120B Primary ➔ Gemini 3.6 Flash Secondary ➔ Groq 20B Tertiary)?** Spans two independent API providers (Groq and Google Gemini) across 3 tiers. Primary classification uses Groq (`openai/gpt-oss-120b`) for ultra-low latency inference (~500 tokens/sec). If Groq primary encounters rate limits, the system automatically fails over to Google Gemini 3.6 Flash. If Gemini's daily quota is exhausted, the pipeline seamlessly switches to Groq (`openai/gpt-oss-20b`), an active, verified model operating on an independent Groq quota bucket, guaranteeing uninterrupted automated triage without unverified third-party dependencies.
 - **Why LangChain?** Used strictly for model interfaces and structured output abstraction (`.with_structured_output()`). No unnecessary agents or chains.
 - **Why not multi-agent?** A single AI decision component inside a stateful workflow is simpler, easier to test, and more reliable than a swarm of autonomous agents.
 - **Why deterministic guardrails?** An LLM should recommend actions, but standard Python code should enforce business safety logic.
 - **Why ChromaDB & Resilient Hybrid Embeddings?** Employs a shared singleton ChromaDB client with resilient hybrid embeddings: primary Google Gemini Cloud (`models/gemini-embedding-001`, 384-dim via Matryoshka Representation Learning) offloading neural net compute to Google Cloud GPUs, with seamless automatic fallback to local ONNX (`all-MiniLM-L6-v2`, 384-dim). Powers semantic few-shot correction retrieval, intent caching, and verified policy RAG with zero memory duplication.
-- **Why Concurrent Triage (Concurrency = 3) & Model Observability?** Bulk inbox triage executes concurrently with 3 parallel workers (`TRIAGE_CONCURRENCY=3`). Every embedding and LLM invocation outputs its active model name directly into terminal logs and the frontend UI's live processing log.
+- **Why Concurrent Triage (Concurrency = 2) & Model Observability?** Bulk inbox triage executes concurrently with 2 parallel workers (`TRIAGE_CONCURRENCY=2`) and a 0.5s stagger delay to prevent token-per-minute bursts on free-tier APIs. Every embedding and LLM invocation outputs its active model name directly into terminal logs and the frontend UI's live processing log.
 
 ## 📚 Assessment Deliverables & Documentation
 

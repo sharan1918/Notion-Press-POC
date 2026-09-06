@@ -68,9 +68,9 @@ def test_serialize_state():
 
 def test_get_llms_initialization():
     with patch.dict("os.environ", {"GOOGLE_API_KEY": "AIzaSyValidGoogleKey123456789", "GROQ_API_KEY": "gsk_validGroqKey123456789"}):
-        gemini, groq = get_llms()
+        gemini, groq, groq_tertiary = get_llms()
         # When valid keys are provided, clients are initialized
-        assert gemini is not None or groq is not None
+        assert gemini is not None or groq is not None or groq_tertiary is not None
 
 def test_invoke_classification_gemini_success():
     expected_cls = EmailClassification(
@@ -85,7 +85,7 @@ def test_invoke_classification_gemini_success():
     mock_groq = MagicMock()
     mock_groq.with_structured_output.return_value.invoke.return_value = expected_cls
     
-    with patch("app.graph.get_llms", return_value=(None, mock_groq)):
+    with patch("app.graph.get_llms", return_value=(None, mock_groq, None)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "publishing_status"
@@ -107,14 +107,39 @@ def test_invoke_classification_failover_to_gemini():
     mock_gemini = MagicMock()
     mock_gemini.with_structured_output.return_value.invoke.return_value = expected_cls
     
-    with patch("app.graph.get_llms", return_value=(mock_gemini, mock_groq)):
+    with patch("app.graph.get_llms", return_value=(mock_gemini, mock_groq, None)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "cover_design"
         assert provider == "Gemini 3.6 Flash"
 
+def test_invoke_classification_failover_to_tertiary():
+    expected_cls = EmailClassification(
+        intent="cover_design",
+        urgency=4,
+        key_details=["Cover art proof"],
+        missing_information=[],
+        confidence=0.92,
+        classification_explanation="Author asking about book cover proof"
+    )
+    
+    mock_groq = MagicMock()
+    mock_groq.with_structured_output.return_value.invoke.side_effect = RuntimeError("Groq 120B rate limit reached")
+    
+    mock_gemini = MagicMock()
+    mock_gemini.with_structured_output.return_value.invoke.side_effect = RuntimeError("Gemini quota 429")
+    
+    mock_tertiary = MagicMock()
+    mock_tertiary.with_structured_output.return_value.invoke.return_value = expected_cls
+    
+    with patch("app.graph.get_llms", return_value=(mock_gemini, mock_groq, mock_tertiary)):
+        state = {}
+        res, provider = invoke_classification("test prompt", state)
+        assert res.intent == "cover_design"
+        assert provider == "Groq (GPT-OSS-20B)"
+
 def test_invoke_classification_no_provider_raises():
-    with patch("app.graph.get_llms", return_value=(None, None)):
+    with patch("app.graph.get_llms", return_value=(None, None, None)):
         with pytest.raises(RuntimeError, match="No working LLM provider found"):
             invoke_classification("test prompt", {})
 

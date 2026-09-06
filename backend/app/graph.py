@@ -56,6 +56,7 @@ def get_llms():
             gemini = None
 
     groq = None
+    groq_tertiary = None
     if _is_valid_api_key(groq_key):
         try:
             groq = ChatGroq(
@@ -65,17 +66,31 @@ def get_llms():
                 timeout=30.0,
             )
         except Exception as e:
-            logger.warning(f"Failed to initialize ChatGroq: {e}")
+            logger.warning(f"Failed to initialize ChatGroq (gpt-oss-120b): {e}")
             groq = None
+
+        try:
+            groq_tertiary = ChatGroq(
+                model="openai/gpt-oss-20b",
+                api_key=groq_key,
+                max_retries=2,
+                timeout=30.0,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to initialize ChatGroq (openai/gpt-oss-20b): {e}")
+            groq_tertiary = None
             
-    _CACHED_LLMS = (gemini, groq)
+    _CACHED_LLMS = (gemini, groq, groq_tertiary)
     _CACHED_KEYS = current_keys
-    return gemini, groq
+    return gemini, groq, groq_tertiary
 
 def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification, str]:
-    gemini_llm, groq_llm = get_llms()
+    llms = get_llms()
+    gemini_llm = llms[0] if len(llms) > 0 else None
+    groq_llm = llms[1] if len(llms) > 1 else None
+    groq_tertiary_llm = llms[2] if len(llms) > 2 else None
     
-    # 1. Attempt Groq (Primary)
+    # 1. Attempt Groq Primary (GPT-OSS-120B)
     if groq_llm:
         try:
             structured_llm = groq_llm.with_structured_output(EmailClassification)
@@ -84,18 +99,34 @@ def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification
         except Exception as e:
             err_msg = str(e)
             if gemini_llm:
-                log(state, f"Groq rate limit/error ({err_msg[:60]}...). Automatically switching to Gemini failover...")
+                log(state, f"Groq primary rate limit/error ({err_msg[:60]}...). Automatically switching to Gemini failover...")
+            elif groq_tertiary_llm:
+                log(state, f"Groq primary rate limit/error ({err_msg[:60]}...). Switching to Groq 20B fallback...")
             else:
                 raise e
                 
-    # 2. Attempt Gemini (Failover / Secondary)
+    # 2. Attempt Gemini Secondary Failover (Gemini 3.6 Flash)
     if gemini_llm:
         try:
             structured_llm = gemini_llm.with_structured_output(EmailClassification)
             res = structured_llm.invoke(prompt)
             return res, "Gemini 3.6 Flash"
         except Exception as e:
-            log(state, f"Gemini execution error: {str(e)[:80]}")
+            err_msg = str(e)
+            log(state, f"Gemini execution error: {err_msg[:60]}")
+            if groq_tertiary_llm:
+                log(state, "Gemini failed/quota exhausted. Automatically switching to tertiary fallback: Groq (GPT-OSS-20B)...")
+            else:
+                raise e
+
+    # 3. Attempt Groq Tertiary Failover (GPT-OSS-20B)
+    if groq_tertiary_llm:
+        try:
+            structured_llm = groq_tertiary_llm.with_structured_output(EmailClassification)
+            res = structured_llm.invoke(prompt)
+            return res, "Groq (GPT-OSS-20B)"
+        except Exception as e:
+            log(state, f"Groq 20B fallback error: {str(e)[:60]}")
             raise e
         
     raise RuntimeError("No working LLM provider found. Please set GOOGLE_API_KEY or GROQ_API_KEY in backend/.env")
@@ -273,12 +304,15 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
         "body": safe_body,
     }
 
-    gemini_llm, groq_llm = get_llms()
+    llms = get_llms()
+    gemini_llm = llms[0] if len(llms) > 0 else None
+    groq_llm = llms[1] if len(llms) > 1 else None
+    groq_tertiary_llm = llms[2] if len(llms) > 2 else None
     output_parser = StrOutputParser()
     draft = None
     provider_used = None
 
-    # 1. Attempt Groq (Primary)
+    # 1. Attempt Groq (Primary: GPT-OSS-120B)
     if groq_llm:
         try:
             # Declarative LangChain Expression Language (LCEL) chain
@@ -287,11 +321,13 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
             draft = extract_content_str(raw)
             provider_used = "Groq (GPT-OSS-120B)"
         except Exception as e:
-            logger.warning(f"Groq failed for RAG reply generation: {e}")
+            logger.warning(f"Groq primary failed for RAG reply generation: {e}")
             if gemini_llm:
-                log(state, f"Groq error/timeout ({str(e)[:60]}...). Automatically switching to Gemini failover for RAG...")
+                log(state, f"Groq primary error/timeout ({str(e)[:60]}...). Automatically switching to Gemini failover for RAG...")
+            elif groq_tertiary_llm:
+                log(state, f"Groq primary error/timeout ({str(e)[:60]}...). Switching to Groq 20B fallback for RAG...")
 
-    # 2. Attempt Gemini (Failover / Secondary)
+    # 2. Attempt Gemini (Secondary Failover: Gemini 3.6 Flash)
     if not draft and gemini_llm:
         try:
             # Declarative LangChain Expression Language (LCEL) failover chain
@@ -302,6 +338,19 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
         except Exception as e:
             logger.warning(f"Gemini failed for RAG reply generation: {e}")
             log(state, f"Gemini failover error: {str(e)[:60]}")
+            if groq_tertiary_llm:
+                log(state, "Gemini failed for RAG. Automatically switching to tertiary fallback: Groq (GPT-OSS-20B)...")
+
+    # 3. Attempt Groq Tertiary Failover (GPT-OSS-20B)
+    if not draft and groq_tertiary_llm:
+        try:
+            chain = RAG_REPLY_PROMPT_TEMPLATE | groq_tertiary_llm | output_parser
+            raw = chain.invoke(rag_inputs)
+            draft = extract_content_str(raw)
+            provider_used = "Groq (GPT-OSS-20B)"
+        except Exception as e:
+            logger.warning(f"Groq 20B failed for RAG reply generation: {e}")
+            log(state, f"Groq 20B failover error: {str(e)[:60]}")
 
     if draft and draft.strip():
         state["draft_response"] = draft.strip()
@@ -489,6 +538,8 @@ def execute_action(state: EmailProcessingState) -> EmailProcessingState:
         log(state, f"Side-effect: Archiving email '{state['email'].subject}' from inbox")
     elif action and action.action_type == "auto_reply" and state.get("draft_response"):
         log(state, f"Side-effect: Dispatched RAG auto-reply directly to {state['email'].sender}")
+    elif action and action.target_team:
+        log(state, f"Side-effect: Dispatched & routed ticket to {action.target_team} team")
     
     log(state, f"Action executed: {action.action_type if action else 'none'} - {action.description if action else 'No action'}")
     state["final_status"] = "executed"

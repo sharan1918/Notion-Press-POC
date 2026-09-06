@@ -144,6 +144,19 @@ export default function ProcessingResult({ state }: { state: ProcessingResponse[
             <div>
               <p className="text-[11px] font-mono text-primary uppercase tracking-wider mb-1">Recommended Action</p>
               <h4 className="text-base font-bold text-foreground tracking-tight">{recommended_action.description}</h4>
+              {recommended_action.target_team && (
+                <div className="mt-2 flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary/10 border border-primary/20 text-xs font-medium text-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    <span>Routed to: <strong className="font-semibold">{recommended_action.target_team} Team</strong></span>
+                  </span>
+                </div>
+              )}
             </div>
             {guardrail_result && (
               <span className={`px-2.5 py-1 text-[10px] uppercase font-mono font-bold rounded-full border ${

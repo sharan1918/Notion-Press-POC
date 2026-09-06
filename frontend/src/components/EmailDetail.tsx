@@ -254,7 +254,23 @@ export default function EmailDetail({
             
             {state.final_status === "executed" && (
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded text-emerald-500 font-semibold text-xs flex items-center gap-2">
-                <span>✅</span> Action executed by deterministic policy engine.
+                <span>✅</span>
+                <span>
+                  Action executed by deterministic policy engine.
+                  {state.recommended_action?.target_team ? (
+                    <span className="ml-1 text-foreground font-medium">
+                      Dispatched &amp; routed to <strong className="text-emerald-500 font-bold underline decoration-emerald-500/40">{state.recommended_action.target_team} Team</strong>.
+                    </span>
+                  ) : state.recommended_action?.action_type === "auto_reply" ? (
+                    <span className="ml-1 text-foreground font-medium">
+                      Automated RAG reply dispatched to author.
+                    </span>
+                  ) : state.recommended_action?.action_type === "archive" ? (
+                    <span className="ml-1 text-foreground font-medium">
+                      Spam email archived from inbox.
+                    </span>
+                  ) : null}
+                </span>
               </div>
             )}
             

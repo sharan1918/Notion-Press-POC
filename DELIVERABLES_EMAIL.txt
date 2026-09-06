@@ -13,11 +13,11 @@ LINKS:
 • Video Walkthrough: https://drive.google.com/file/d/1RDtHJagkBYGcybh8hQJJqZ0th3p5_4hR/view?usp=sharing
 
 WHAT WAS BUILT:
-• Intelligent Triage: Fast-path spam filter ($0 cost, 1ms) + intent/urgency classification (Groq OSS-120B with Gemini failover).
+• Intelligent Triage: Fast-path spam filter ($0 cost, 1ms) + intent/urgency classification (3-tier resilient failover: Groq OSS-120B ➔ Gemini 3.6 Flash ➔ Groq 20B).
 • Policy Grounding (RAG): Answers author queries using the Notion Press Publishing Policy Handbook (ChromaDB vector store).
 • Deterministic Guardrails: Code-enforced business rules (policy.py) requiring supervisor approval for high-risk actions (refunds > ₹1,000, legal disputes).
 • Human-in-the-Loop & Learning: LangGraph interrupt() workflow with dynamic few-shot exemplar learning from human corrections.
-• Production Ready: 74 automated unit tests (100% passing) + automated GitHub Actions CI/CD.
+• Production Ready: 80 automated unit tests (100% passing) + automated GitHub Actions CI/CD.
 
 QUICK 2-MINUTE TEST ON LIVE DEMO (Preloaded Sample Test Cases):
 1. Email #2 (Rahul Menon) -> See real-time SSE streaming and grounded RAG reply.

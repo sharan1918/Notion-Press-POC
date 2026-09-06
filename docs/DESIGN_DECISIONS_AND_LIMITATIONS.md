@@ -30,12 +30,12 @@ flowchart TD
 
     CACHE_CHECK["Semantic Intent Cache<br/>ChromaDB Cosine Embedding"]:::amberBox
 
-    AI["LangGraph State Machine<br/>Groq OSS-120B / Gemini 3.6 Failover"]:::blueBox
+    AI["LangGraph State Machine<br/>Groq 120B / Gemini 3.6 / Groq 20B Failover"]:::blueBox
 
     GUARD["[ 5. SAFETY RULES & POLICY ]<br/><b>Deterministic Engine (policy.py)</b><br/>Evaluates Intent, Thresholds & Risk"]:::greenBox
 
     RAG_REPLY["[ RAG AUTO-REPLY ]<br/>Grounded Notion Press Policy<br/><i>(Personalized with New Author Name)</i>"]:::greenBox
-    TEAM_ROUTE["[ ROUTE TO TEAM ]<br/>Dispatched to Department<br/><i>(Finance, QA/Printing, Design)</i>"]:::cyanBox
+    TEAM_ROUTE["[ ROUTE TO TEAM ]<br/>Dispatched to Department<br/><i>(Finance, QA/Printing, Design, Metadata)</i>"]:::cyanBox
     NEED_INFO["[ MISSING INFO ]<br/>LangGraph interrupt()<br/><i>(ISBN or Order ID Absent)</i>"]:::purpleBox
     HITL["[ SUPERVISOR APPROVAL ]<br/>LangGraph interrupt()<br/><i>(Urgency &gt;= 4, Conf &lt; 70%, High Risk)</i>"]:::purpleBox
 
@@ -174,12 +174,14 @@ flowchart TD
 
 ---
 
-### 1.3 Multi-Provider Resilient Failover (Groq Primary + Gemini Fallback)
-* **Decision**: Configured **Groq (`openai/gpt-oss-120b`)** as the primary inference engine with seamless automatic failover to **Google Gemini 3.6 Flash**.
+### 1.3 3-Tier Resilient Failover (Groq 120B Primary + Gemini Fallback + Groq 20B Fallback Model)
+* **Decision**: Configured a resilient 3-tier LLM inference cascade across two independent API providers (Groq and Google Gemini) for both classification and LCEL RAG auto-reply generation:
+  1. **Primary Tier**: **Groq (`openai/gpt-oss-120b`)** for sub-second inference speeds (~500 tokens/sec) and ultra-low latency triage (~400ms).
+  2. **Secondary Provider Failover**: **Google Gemini 3.6 Flash (`gemini-3.6-flash`)** if Groq primary encounters rate limits or network errors.
+  3. **Tertiary Model Failover**: **Groq (`openai/gpt-oss-20b`)** if Gemini's daily quota is exhausted. Rather than introducing an unverified third-party provider, this leverages Groq's separate per-model quota bucket with a verified, active lightweight model for uninterrupted triage.
 * **Rationale**:
-  - **Speed**: Groq delivers ~500 tokens/second, enabling near-instant email triage (~400ms latency).
-  - **Availability**: Free-tier cloud endpoints occasionally suffer from rate limits (`429 Too Many Requests`). If Groq hits a rate limit or timeout, the pipeline catches the error and instantly invokes Gemini 3.6 Flash without crashing the user's workflow.
-  - **Consistent Schema**: Both providers strictly honor the identical Pydantic structured output contract (`EmailClassification`).
+  - **Zero Downtime**: Eliminates single-point-of-failure outages caused by free-tier burst limits (`429 Too Many Requests`) or daily quota caps (`429 RESOURCE_EXHAUSTED`).
+  - **Consistent Schema**: All three inference tiers strictly honor the identical Pydantic structured output contract (`EmailClassification`) and prompt formatting.
 
 ---
 
@@ -213,7 +215,7 @@ flowchart TD
   - **Cloud Compute Offloading**: Heavy local neural network inference on CPU causes memory spikes and thread contention. Gemini Cloud embeddings offload vector computation to Google Cloud TPUs/GPUs with generous quotas (1,500 RPM, $0 cost).
   - **MRL 384-Dimension Alignment**: Gemini's native 3,072-dim embeddings are truncated to **384 dimensions** using Matryoshka Representation Learning (MRL). This exactly matches ChromaDB's ONNX default (384 dimensions), allowing collections to switch between cloud and local without dimensionality conflict errors.
   - **Complete Model Observability**: Every embedding generation, semantic cache lookup, feedback exemplar retrieval, and policy RAG search explicitly outputs the active model name into server console logs and the frontend UI's live processing log.
-  - **Parallel Batch Concurrency**: Upgraded background bulk triage to 3 concurrent async workers (`TRIAGE_CONCURRENCY=3`) for rapid inbox evaluation.
+  - **Parallel Batch Concurrency**: Configured background bulk triage to 2 concurrent workers (`TRIAGE_CONCURRENCY=2`) with a 0.5s stagger delay (`TRIAGE_DELAY_SECONDS=0.5`) to eliminate token-per-minute bursts.
 
 ---
 
@@ -253,7 +255,7 @@ While fully functional and feature-complete for the assessment, the current Proo
 | **Email Ingestion** | Curated mock inbox (`sample_emails.py`) and UI compose modal | Incoming emails are simulated in-memory rather than polled from live IMAP/SMTP mailboxes or webhook endpoints. |
 | **Attachment Proofs** | Local memory handling & filename references | File uploads are handled locally in memory rather than uploaded to cloud object storage (e.g. AWS S3 / GCS). |
 | **Access Control (RBAC)**| Uniform interface for all users | No role differentiation between Frontline Support Agents, Senior Leads, and Finance Administrators. |
-| **Batch Concurrency** | In-process asynchronous triage pool (`TRIAGE_CONCURRENCY = 3`) | Background triage runs within the FastAPI event loop with semaphore concurrency rather than offloaded to a distributed worker queue (Celery/RabbitMQ). |
+| **Batch Concurrency** | In-process asynchronous triage pool (`TRIAGE_CONCURRENCY = 2`, `TRIAGE_DELAY_SECONDS = 0.5`) | Background triage runs within the FastAPI event loop with semaphore concurrency and stagger delays to prevent free-tier TPM burst limits. |
 
 ---
 
@@ -320,7 +322,7 @@ Summary comparison of the POC implementation versus the full production architec
 | **Model Instructions** | Strict Pydantic JSON schema; XML isolation for untrusted text; delimiter sanitization. | Versioned prompt registries (Langfuse/LangSmith); automated regression evaluations. |
 | **Permissions & Approvals** | LangGraph `interrupt()` pauses execution; supervisor modal required for high risk / urgency >= 4. | Role-Based Access Control (RBAC) with dual-authorization gates for high-value financial refunds. |
 | **Memory & State** | SQLite `SqliteSaver` checkpointer; cumulative multi-turn string concatenation. | Managed PostgreSQL (`AsyncPostgresSaver`); vector-indexed historical conversation clustering. |
-| **Failure Handling** | Groq Primary -> Gemini Failover; automatic retry counter (up to 2 retries); manual review fallback. | Distributed Dead Letter Queues (DLQ); exponential backoff with jitter; automated circuit breakers. |
+| **Failure Handling** | 3-Tier cascade: Groq 120B (Primary) ➔ Gemini 3.6 (Secondary) ➔ Groq GPT-OSS-20B (Tertiary); automatic retries (up to 2); manual review fallback. | Distributed Dead Letter Queues (DLQ); exponential backoff with jitter; automated circuit breakers. |
 | **Stopping Limits** | Hard stopping limits: max 3 correction loops per email; max 2 LLM retries; rejection exits directly to `END`. | Per-workflow configurable timeout budgets; max financial loss thresholds per author account. |
 | **Logging & Tracing** | Timestamped state processing array streamed via Server-Sent Events (SSE). | OpenTelemetry distributed tracing; Datadog/NewRelic APM alerts; structured audit log streaming. |
 | **Token / Cost Limits** | Fast-path deterministic spam filter ($0.00 cost) + semantic intent caching; fast/cost-effective models. | Per-department daily token ceilings; dynamic model routing (small 8B model for simple triage -> 70B for ambiguous tickets). |
