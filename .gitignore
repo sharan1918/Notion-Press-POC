@@ -37,4 +37,6 @@ demo_walkthrough/
 
 /presentation
 
-/scripts
+/scripts/*
+!/scripts/run_benchmark.py
+!/scripts/benchmark_dataset.json
