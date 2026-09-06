@@ -11,11 +11,11 @@ This document details the architectural decisions, technology stack rationale, s
 | **Orchestration & Workflow** | **LangGraph** (Python) | State-machine based orchestration designed for cyclic workflows, Human-in-the-Loop (`interrupt()` / `Command(resume=...)`), checkpoint serialization, and multi-turn state accumulation. Unlike linear chains (DAGs), LangGraph natively models iterative human feedback loops. |
 | **Checkpointer & Persistence** | **SQLite Saver** (`SqliteSaver`) | Zero-configuration, file-based persistence for conversation threads and execution state snapshots. Allows any workflow to pause indefinitely while waiting for author info or human approval, surviving server restarts. |
 | **Backend API** | **FastAPI** + **Uvicorn** + **SSE** | High-performance asynchronous Python web framework with native async streaming support (`StreamingResponse` for Server-Sent Events), Pydantic validation, and OpenAPI documentation out of the box. |
-| **LLM Tier & Failover** | **Groq** (`openai/gpt-oss-120b`, Primary) + **Gemini 3.6 Flash** (Failover) | **Groq** provides sub-second inference speeds (~500 tokens/sec) and zero-cost high-throughput execution. **Gemini 3.6 Flash** provides state-of-the-art reasoning and native JSON schema enforcement as automatic seamless failover if Groq quotas are exhausted. |
+| **LLM Tier & 3-Tier Failover** | **Groq** (`openai/gpt-oss-120b`, Primary) + **Gemini 3.6 Flash** (Secondary) + **Groq Llama-3.3-70B** (Tertiary) | **Groq Primary** provides sub-second inference speeds (~500 tokens/sec). **Gemini 3.6 Flash** provides state-of-the-art fallback reasoning. **Groq Llama-3.3-70B** provides an independent high-capacity tertiary fallback if primary and secondary hit rate limits. |
 | **Embedding Tier & Fallback** | **Google Gemini Cloud** (`models/gemini-embedding-001`, Primary) + **Local ONNX** (`all-MiniLM-L6-v2`, Fallback) | Hybrid 384-dimensional vector engine. Primary offloads vectorization to Google Cloud GPUs (1,500 RPM, $0 cost via Matryoshka Representation Learning truncation). Local ONNX takes over automatically if offline or API key absent. Used uniformly across Intent Cache, Few-Shot Feedback, and Policy RAG. |
 | **Vector Storage & Caching** | **ChromaDB** (Singleton PersistentClient) | Cosine space (`hnsw:space: cosine`) vector database providing semantic intent caching, dynamic few-shot exemplar retrieval, and Notion Press policy RAG search. Managed via a thread-safe singleton to eliminate duplicate ONNX runtimes and prevent memory exhaustion. |
 | **Frontend Framework** | **React 18** + **Vite** + **TypeScript** | Lightning-fast HMR build tooling, strong type safety matching backend Pydantic models, component-driven UI for reactive state updates and real-time SSE stream consumption via `AbortController`. |
-| **Styling & Design System** | **Tailwind CSS** + Custom Design Tokens | Modern dark/light mode, sleek typography, subtle micro-animations, glassmorphism cards, and clean visual status indicators (pulsating triage badges, urgency meters, risk chips). |
+| **Styling & Design System** | **Tailwind CSS** + Custom Design Tokens | Modern dark/light mode, sleek typography, subtle micro-animations, glassmorphism cards, and clean visual status indicators (pulsating triage badges, urgency meters, risk chips, and explicit departmental team routing tags). |
 | **Cloud Deployment** | **Northflank** (Backend) + **Vercel** (Frontend) | Containerized Docker deployment on Northflank with dynamic port binding, health monitoring, environment secret management, and continuous Git deployment; global edge distribution on Vercel. |
 
 ---
@@ -42,7 +42,8 @@ flowchart TD
 
     subgraph LLM_TIER ["MULTI-PROVIDER AI INFERENCE"]
         PRIMARY["Groq GPT-OSS-120B<br/>(Primary Structured Output)"]:::llmBox
-        FAILOVER["Gemini 3.6 Flash<br/>(Sub-Second Automatic Failover)"]:::failoverBox
+        FAILOVER["Gemini 3.6 Flash<br/>(Secondary Failover)"]:::failoverBox
+        TERTIARY["Groq Llama-3.3-70B<br/>(Tertiary Failover)"]:::llmBox
     end
 
     CLIENT -->|SSE Stream / REST| ROUTES
@@ -51,6 +52,8 @@ flowchart TD
     FEEDBACK -->|Dynamic Exemplars| GRAPH
     GRAPH -->|Prompt & Schema| PRIMARY
     PRIMARY -.->|On Rate Limit / 429| FAILOVER
+    FAILOVER -.->|On Quota / 429| TERTIARY
+    TERTIARY -->|Structured Decision| GRAPH
     FAILOVER -->|Structured Decision| GRAPH
 ```
 
@@ -59,20 +62,22 @@ flowchart TD
 * **Decision**: Implemented proactive streaming on email selection via `GET /api/process-stream/{email_id}` combined with client-side in-memory caching.
 * **Benefit**: Support agents immediately see progressive node updates (`ingest` $\rightarrow$ `classify` $\rightarrow$ `policy` $\rightarrow$ `action`) with live animated pulsating badges. Switching back to an already triaged email renders instantly from cache with a "🔄 Re-analyze" option.
 
-### B. Decoupled Deterministic Policy & Guardrails
+### B. Decoupled Deterministic Policy & Departmental Team Routing
 * **Problem**: Pure LLM action execution is risky and unpredictable for mission-critical actions (e.g., refunds, database metadata changes, escalations).
-* **Decision**: The LLM *only* performs intent classification, entity extraction, and missing information identification. Business decisions and risk assessments are evaluated by a **deterministic Python policy engine** (`backend/app/policy.py`):
+* **Decision**: The LLM *only* performs intent classification, entity extraction, and missing information identification. Business decisions and departmental routing are evaluated by a **deterministic Python policy engine** (`backend/app/policy.py`):
+  * **Departmental Team Routing**: Maps categories directly to assigned operational teams (*royalty_payment* ➔ Finance, *printing_issue* ➔ QA & Printing, *cover_design* ➔ Design, *isbn_metadata* ➔ Metadata, *complaint* ➔ Senior Support). Both UI cards, human approval dialogs, and execution confirmation banners display the target team.
   * **Urgency $\ge 4$**: Automatically triggers `human_approval`.
   * **Confidence $< 70\%$**: Automatically triggers `human_approval`.
   * **High-Impact Actions** (`issue_refund`, `modify_metadata`, `escalate`): Always require human supervisor sign-off.
   * **Missing Required Identifiers**: Halts routing and triggers `request_info`.
 
-### C. Multi-Provider Automatic Failover
-* **Problem**: Free-tier cloud LLM endpoints frequently suffer from rate limits (`429 RESOURCE_EXHAUSTED`) or network timeouts.
-* **Decision**: Implemented resilient multi-provider routing in `backend/app/graph.py`:
-  * Attempts primary model (`Groq` `openai/gpt-oss-120b`) with `max_retries=1` and `timeout=30.0` for sub-second classification (~500 tokens/sec).
-  * Catches quota, rate limit, and timeout exceptions and automatically switches to `Gemini 3.6 Flash` failover without crashing the pipeline.
-  * Both providers adhere to the identical `EmailClassification` Pydantic structured output contract.
+### C. 3-Tier Multi-Provider Automatic Failover
+* **Problem**: Free-tier cloud LLM endpoints frequently suffer from burst rate limits (`429 Too Many Requests`) or daily quota caps (`429 RESOURCE_EXHAUSTED`).
+* **Decision**: Implemented resilient 3-tier multi-provider routing in `backend/app/graph.py`:
+  * **Tier 1 (Primary)**: Attempts `Groq` `openai/gpt-oss-120b` for sub-second classification (~500 tokens/sec).
+  * **Tier 2 (Secondary Failover)**: If Groq primary encounters rate limits, automatically fails over to `Gemini 3.6 Flash`.
+  * **Tier 3 (Tertiary Failover)**: If Gemini's daily quota is exhausted, automatically switches to `Groq` `llama-3.3-70b-versatile` on an independent rate limit bucket.
+  * All three providers strictly adhere to the identical `EmailClassification` Pydantic structured output contract and LCEL RAG prompt template.
 
 ### D. In-Context Feedback Loop (Few-Shot Reinforcement)
 * **Problem**: Fine-tuning or retraining weights on every single human correction is expensive, slow, and operationally impractical for day-to-day support triage.
@@ -92,7 +97,7 @@ flowchart TD
   * **Fallback**: Local ONNX `DefaultEmbeddingFunction` (`all-MiniLM-L6-v2`, 384-dim) takes over automatically if Google API calls fail.
   * **Unified Dimensionality**: Both primary and fallback produce identical 384-dimensional vectors, ensuring complete compatibility across ChromaDB collections.
   * **Model Observability**: Every vector generation, semantic cache query, feedback exemplar retrieval, and policy RAG search explicitly outputs the active embedding model name to terminal logs and the live UI processing log.
-  * **Parallel Concurrency**: Background batch email triage runs at 3 concurrent workers (`TRIAGE_CONCURRENCY=3`).
+  * **Parallel Concurrency**: Background batch email triage runs with 2 concurrent workers (`TRIAGE_CONCURRENCY=2`) and a 0.5s stagger delay (`TRIAGE_DELAY_SECONDS=0.5`) to eliminate token-per-minute bursts.
 
 ---
 
