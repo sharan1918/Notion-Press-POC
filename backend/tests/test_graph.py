@@ -111,7 +111,7 @@ def test_invoke_classification_failover_to_gemini():
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "cover_design"
-        assert provider == "Gemini 3.5 Flash"
+        assert provider == "Gemini 3.6 Flash"
 
 def test_invoke_classification_no_provider_raises():
     with patch("app.graph.get_llms", return_value=(None, None)):
