@@ -30,7 +30,7 @@ flowchart TD
 
     CACHE_CHECK["Semantic Intent Cache<br/>ChromaDB Cosine Embedding"]:::amberBox
 
-    AI["LangGraph State Machine<br/>Groq 120B / Gemini 3.6 / Llama-3.3 Failover"]:::blueBox
+    AI["LangGraph State Machine<br/>Groq 120B / Gemini 3.6 / Groq 20B Failover"]:::blueBox
 
     GUARD["[ 5. SAFETY RULES & POLICY ]<br/><b>Deterministic Engine (policy.py)</b><br/>Evaluates Intent, Thresholds & Risk"]:::greenBox
 
@@ -174,14 +174,14 @@ flowchart TD
 
 ---
 
-### 1.3 3-Tier Multi-Provider Resilient Failover (Groq 120B Primary + Gemini Fallback + Groq Llama-3.3 Fallback)
-* **Decision**: Configured a resilient 3-tier LLM inference cascade across both classification and LCEL RAG auto-reply generation:
-  1. **Primary**: **Groq (`openai/gpt-oss-120b`)** for sub-second inference speeds (~500 tokens/sec) and ultra-low latency triage (~400ms).
-  2. **Secondary Failover**: **Google Gemini 3.6 Flash (`gemini-3.6-flash`)** if Groq primary encounters rate limits or network errors.
-  3. **Tertiary Failover**: **Groq (`llama-3.3-70b-versatile`)** if Gemini's daily quota is exhausted. Since Groq rate limits are segregated per-model, Llama-3.3 operates on an independent, high-capacity token/request bucket.
+### 1.3 3-Tier Resilient Failover (Groq 120B Primary + Gemini Fallback + Groq 20B Fallback Model)
+* **Decision**: Configured a resilient 3-tier LLM inference cascade across two independent API providers (Groq and Google Gemini) for both classification and LCEL RAG auto-reply generation:
+  1. **Primary Tier**: **Groq (`openai/gpt-oss-120b`)** for sub-second inference speeds (~500 tokens/sec) and ultra-low latency triage (~400ms).
+  2. **Secondary Provider Failover**: **Google Gemini 3.6 Flash (`gemini-3.6-flash`)** if Groq primary encounters rate limits or network errors.
+  3. **Tertiary Model Failover**: **Groq (`openai/gpt-oss-20b`)** if Gemini's daily quota is exhausted. Rather than introducing an unverified third-party provider, this leverages Groq's separate per-model quota bucket with a verified, active lightweight model for uninterrupted triage.
 * **Rationale**:
   - **Zero Downtime**: Eliminates single-point-of-failure outages caused by free-tier burst limits (`429 Too Many Requests`) or daily quota caps (`429 RESOURCE_EXHAUSTED`).
-  - **Consistent Schema**: All three providers strictly honor the identical Pydantic structured output contract (`EmailClassification`) and prompt formatting.
+  - **Consistent Schema**: All three inference tiers strictly honor the identical Pydantic structured output contract (`EmailClassification`) and prompt formatting.
 
 ---
 
@@ -322,7 +322,7 @@ Summary comparison of the POC implementation versus the full production architec
 | **Model Instructions** | Strict Pydantic JSON schema; XML isolation for untrusted text; delimiter sanitization. | Versioned prompt registries (Langfuse/LangSmith); automated regression evaluations. |
 | **Permissions & Approvals** | LangGraph `interrupt()` pauses execution; supervisor modal required for high risk / urgency >= 4. | Role-Based Access Control (RBAC) with dual-authorization gates for high-value financial refunds. |
 | **Memory & State** | SQLite `SqliteSaver` checkpointer; cumulative multi-turn string concatenation. | Managed PostgreSQL (`AsyncPostgresSaver`); vector-indexed historical conversation clustering. |
-| **Failure Handling** | 3-Tier cascade: Groq 120B (Primary) ➔ Gemini 3.6 (Secondary) ➔ Groq Llama-3.3 (Tertiary); automatic retries (up to 2); manual review fallback. | Distributed Dead Letter Queues (DLQ); exponential backoff with jitter; automated circuit breakers. |
+| **Failure Handling** | 3-Tier cascade: Groq 120B (Primary) ➔ Gemini 3.6 (Secondary) ➔ Groq GPT-OSS-20B (Tertiary); automatic retries (up to 2); manual review fallback. | Distributed Dead Letter Queues (DLQ); exponential backoff with jitter; automated circuit breakers. |
 | **Stopping Limits** | Hard stopping limits: max 3 correction loops per email; max 2 LLM retries; rejection exits directly to `END`. | Per-workflow configurable timeout budgets; max financial loss thresholds per author account. |
 | **Logging & Tracing** | Timestamped state processing array streamed via Server-Sent Events (SSE). | OpenTelemetry distributed tracing; Datadog/NewRelic APM alerts; structured audit log streaming. |
 | **Token / Cost Limits** | Fast-path deterministic spam filter ($0.00 cost) + semantic intent caching; fast/cost-effective models. | Per-department daily token ceilings; dynamic model routing (small 8B model for simple triage -> 70B for ambiguous tickets). |

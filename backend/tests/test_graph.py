@@ -68,9 +68,9 @@ def test_serialize_state():
 
 def test_get_llms_initialization():
     with patch.dict("os.environ", {"GOOGLE_API_KEY": "AIzaSyValidGoogleKey123456789", "GROQ_API_KEY": "gsk_validGroqKey123456789"}):
-        gemini, groq, groq_llama = get_llms()
+        gemini, groq, groq_tertiary = get_llms()
         # When valid keys are provided, clients are initialized
-        assert gemini is not None or groq is not None or groq_llama is not None
+        assert gemini is not None or groq is not None or groq_tertiary is not None
 
 def test_invoke_classification_gemini_success():
     expected_cls = EmailClassification(
@@ -113,7 +113,7 @@ def test_invoke_classification_failover_to_gemini():
         assert res.intent == "cover_design"
         assert provider == "Gemini 3.6 Flash"
 
-def test_invoke_classification_failover_to_llama():
+def test_invoke_classification_failover_to_tertiary():
     expected_cls = EmailClassification(
         intent="cover_design",
         urgency=4,
@@ -129,14 +129,14 @@ def test_invoke_classification_failover_to_llama():
     mock_gemini = MagicMock()
     mock_gemini.with_structured_output.return_value.invoke.side_effect = RuntimeError("Gemini quota 429")
     
-    mock_llama = MagicMock()
-    mock_llama.with_structured_output.return_value.invoke.return_value = expected_cls
+    mock_tertiary = MagicMock()
+    mock_tertiary.with_structured_output.return_value.invoke.return_value = expected_cls
     
-    with patch("app.graph.get_llms", return_value=(mock_gemini, mock_groq, mock_llama)):
+    with patch("app.graph.get_llms", return_value=(mock_gemini, mock_groq, mock_tertiary)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "cover_design"
-        assert provider == "Groq (Llama-3.3-70B)"
+        assert provider == "Groq (GPT-OSS-20B)"
 
 def test_invoke_classification_no_provider_raises():
     with patch("app.graph.get_llms", return_value=(None, None, None)):

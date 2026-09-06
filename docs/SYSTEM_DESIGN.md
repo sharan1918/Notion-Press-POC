@@ -11,7 +11,7 @@ This document details the architectural decisions, technology stack rationale, s
 | **Orchestration & Workflow** | **LangGraph** (Python) | State-machine based orchestration designed for cyclic workflows, Human-in-the-Loop (`interrupt()` / `Command(resume=...)`), checkpoint serialization, and multi-turn state accumulation. Unlike linear chains (DAGs), LangGraph natively models iterative human feedback loops. |
 | **Checkpointer & Persistence** | **SQLite Saver** (`SqliteSaver`) | Zero-configuration, file-based persistence for conversation threads and execution state snapshots. Allows any workflow to pause indefinitely while waiting for author info or human approval, surviving server restarts. |
 | **Backend API** | **FastAPI** + **Uvicorn** + **SSE** | High-performance asynchronous Python web framework with native async streaming support (`StreamingResponse` for Server-Sent Events), Pydantic validation, and OpenAPI documentation out of the box. |
-| **LLM Tier & 3-Tier Failover** | **Groq** (`openai/gpt-oss-120b`, Primary) + **Gemini 3.6 Flash** (Secondary) + **Groq Llama-3.3-70B** (Tertiary) | **Groq Primary** provides sub-second inference speeds (~500 tokens/sec). **Gemini 3.6 Flash** provides state-of-the-art fallback reasoning. **Groq Llama-3.3-70B** provides an independent high-capacity tertiary fallback if primary and secondary hit rate limits. |
+| **LLM Inference & 3-Tier Failover** | **Groq** (`openai/gpt-oss-120b`, Primary) ➔ **Gemini 3.6 Flash** (Secondary) ➔ **Groq** (`openai/gpt-oss-20b`, Tertiary Model) | Cascades across two independent API providers (Groq and Google Gemini) over 3 tiers. Primary Groq model provides sub-second inference (~500 tokens/sec). Gemini 3.6 Flash provides secondary provider failover. Groq 20B provides an independent quota fallback model if primary and secondary hit rate limits. |
 | **Embedding Tier & Fallback** | **Google Gemini Cloud** (`models/gemini-embedding-001`, Primary) + **Local ONNX** (`all-MiniLM-L6-v2`, Fallback) | Hybrid 384-dimensional vector engine. Primary offloads vectorization to Google Cloud GPUs (1,500 RPM, $0 cost via Matryoshka Representation Learning truncation). Local ONNX takes over automatically if offline or API key absent. Used uniformly across Intent Cache, Few-Shot Feedback, and Policy RAG. |
 | **Vector Storage & Caching** | **ChromaDB** (Singleton PersistentClient) | Cosine space (`hnsw:space: cosine`) vector database providing semantic intent caching, dynamic few-shot exemplar retrieval, and Notion Press policy RAG search. Managed via a thread-safe singleton to eliminate duplicate ONNX runtimes and prevent memory exhaustion. |
 | **Frontend Framework** | **React 18** + **Vite** + **TypeScript** | Lightning-fast HMR build tooling, strong type safety matching backend Pydantic models, component-driven UI for reactive state updates and real-time SSE stream consumption via `AbortController`. |
@@ -43,7 +43,7 @@ flowchart TD
     subgraph LLM_TIER ["MULTI-PROVIDER AI INFERENCE"]
         PRIMARY["Groq GPT-OSS-120B<br/>(Primary Structured Output)"]:::llmBox
         FAILOVER["Gemini 3.6 Flash<br/>(Secondary Failover)"]:::failoverBox
-        TERTIARY["Groq Llama-3.3-70B<br/>(Tertiary Failover)"]:::llmBox
+        TERTIARY["Groq GPT-OSS-20B<br/>(Tertiary Failover)"]:::llmBox
     end
 
     CLIENT -->|SSE Stream / REST| ROUTES
@@ -71,13 +71,13 @@ flowchart TD
   * **High-Impact Actions** (`issue_refund`, `modify_metadata`, `escalate`): Always require human supervisor sign-off.
   * **Missing Required Identifiers**: Halts routing and triggers `request_info`.
 
-### C. 3-Tier Multi-Provider Automatic Failover
+### C. 3-Tier Resilient Multi-Provider Automatic Failover
 * **Problem**: Free-tier cloud LLM endpoints frequently suffer from burst rate limits (`429 Too Many Requests`) or daily quota caps (`429 RESOURCE_EXHAUSTED`).
-* **Decision**: Implemented resilient 3-tier multi-provider routing in `backend/app/graph.py`:
-  * **Tier 1 (Primary)**: Attempts `Groq` `openai/gpt-oss-120b` for sub-second classification (~500 tokens/sec).
-  * **Tier 2 (Secondary Failover)**: If Groq primary encounters rate limits, automatically fails over to `Gemini 3.6 Flash`.
-  * **Tier 3 (Tertiary Failover)**: If Gemini's daily quota is exhausted, automatically switches to `Groq` `llama-3.3-70b-versatile` on an independent rate limit bucket.
-  * All three providers strictly adhere to the identical `EmailClassification` Pydantic structured output contract and LCEL RAG prompt template.
+* **Decision**: Implemented a resilient 3-tier cascade across two independent API providers (Groq and Google Gemini) in `backend/app/graph.py`:
+  * **Tier 1 (Primary Model)**: `Groq` `openai/gpt-oss-120b` for ultra-low latency structured classification (~500 tokens/sec).
+  * **Tier 2 (Secondary Provider Failover)**: `Google Gemini 3.6 Flash` if Groq primary encounters rate limits or network issues.
+  * **Tier 3 (Tertiary Failover Model)**: `Groq` `openai/gpt-oss-20b` if Gemini's daily quota is exhausted. Since Groq rate limits are segregated per model, GPT-OSS-20B operates on an independent, active quota bucket.
+  * All three inference tiers strictly adhere to the identical `EmailClassification` Pydantic structured output contract and LCEL RAG prompt template.
 
 ### D. In-Context Feedback Loop (Few-Shot Reinforcement)
 * **Problem**: Fine-tuning or retraining weights on every single human correction is expensive, slow, and operationally impractical for day-to-day support triage.

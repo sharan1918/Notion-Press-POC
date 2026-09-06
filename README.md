@@ -29,7 +29,7 @@ flowchart TD
 
     CACHE_CHECK["Semantic Intent Cache<br/>ChromaDB Cosine Embedding"]:::amberBox
 
-    AI["LangGraph State Machine<br/>Groq 120B / Gemini 3.6 / Llama-3.3 Failover"]:::blueBox
+    AI["LangGraph State Machine<br/>Groq 120B / Gemini 3.6 / Groq 20B Failover"]:::blueBox
 
     GUARD["[ 5. SAFETY RULES & POLICY ]<br/><b>Deterministic Engine (policy.py)</b><br/>Evaluates Intent, Thresholds & Risk"]:::greenBox
 
@@ -151,7 +151,7 @@ flowchart TD
 
 - **Why LangGraph?** We need conditional branching, human-in-the-loop interruption, resumability, and stopping conditions. LangGraph provides these as first-class primitives.
 - **Why SSE Streaming & Auto-Processing?** Clicking an email automatically streams LangGraph node events via Server-Sent Events (SSE) in real-time and caches results. This eliminates manual trigger delays and provides progressive UI feedback while preserving API efficiency.
-- **Why 3-Tier Multi-Provider Failover (Groq 120B + Gemini 3.6 Flash + Groq Llama-3.3-70B)?** Primary classification uses Groq (`openai/gpt-oss-120b`) for ultra-low latency inference (~500 tokens/sec). If Groq primary encounters rate limits, the system automatically fails over to Google Gemini 3.6 Flash. If Gemini's daily free-tier quota is exhausted, the pipeline seamlessly switches to Groq (`llama-3.3-70b-versatile`) on an independent high-throughput quota tier, guaranteeing uninterrupted automated triage.
+- **Why 3-Tier Resilient Failover (Groq 120B Primary ➔ Gemini 3.6 Flash Secondary ➔ Groq 20B Tertiary)?** Spans two independent API providers (Groq and Google Gemini) across 3 tiers. Primary classification uses Groq (`openai/gpt-oss-120b`) for ultra-low latency inference (~500 tokens/sec). If Groq primary encounters rate limits, the system automatically fails over to Google Gemini 3.6 Flash. If Gemini's daily quota is exhausted, the pipeline seamlessly switches to Groq (`openai/gpt-oss-20b`), an active, verified model operating on an independent Groq quota bucket, guaranteeing uninterrupted automated triage without unverified third-party dependencies.
 - **Why LangChain?** Used strictly for model interfaces and structured output abstraction (`.with_structured_output()`). No unnecessary agents or chains.
 - **Why not multi-agent?** A single AI decision component inside a stateful workflow is simpler, easier to test, and more reliable than a swarm of autonomous agents.
 - **Why deterministic guardrails?** An LLM should recommend actions, but standard Python code should enforce business safety logic.
