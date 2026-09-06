@@ -1,0 +1,35 @@
+Subject: Submission: AI-Powered Email Processing System — Junior Engineer Assessment — Sharan
+
+Hi Team,
+
+I've completed the Proof of Concept for the Notion Press AI-Powered Email Processing System. It is live, containerized, and ready for evaluation.
+
+LINKS:
+• Live Demo: https://notion-press-poc.vercel.app/
+• GitHub Repo: https://github.com/sharan1918/Notion-Press-POC (develop branch)
+• Architecture & Readme: https://github.com/sharan1918/Notion-Press-POC/blob/develop/README.md
+• Design & Limitations Doc: https://github.com/sharan1918/Notion-Press-POC/blob/develop/docs/DESIGN_DECISIONS_AND_LIMITATIONS.md
+• Sample Test Cases & Scenarios: https://github.com/sharan1918/Notion-Press-POC/blob/develop/docs/SAMPLE_TEST_CASES.md
+• Video Walkthrough: https://drive.google.com/file/d/1RDtHJagkBYGcybh8hQJJqZ0th3p5_4hR/view?usp=sharing
+
+WHAT WAS BUILT:
+• Intelligent Triage: Fast-path spam filter ($0 cost, 1ms) + intent/urgency classification (Groq OSS-120B with Gemini failover).
+• Policy Grounding (RAG): Answers author queries using the Notion Press Publishing Policy Handbook (ChromaDB vector store).
+• Deterministic Guardrails: Code-enforced business rules (policy.py) requiring supervisor approval for high-risk actions (refunds > ₹1,000, legal disputes).
+• Human-in-the-Loop & Learning: LangGraph interrupt() workflow with dynamic few-shot exemplar learning from human corrections.
+• Production Ready: 74 automated unit tests (100% passing) + automated GitHub Actions CI/CD.
+
+QUICK 2-MINUTE TEST ON LIVE DEMO (Preloaded Sample Test Cases):
+1. Email #2 (Rahul Menon) -> See real-time SSE streaming and grounded RAG reply.
+2. Email #3 (Anita Desai) -> Catches missing ISBN/Order ID without hallucinating.
+3. Email #6 (Karthik S.) -> Triggers safety guardrail requiring supervisor approval.
+4. Click "Provide Correction" on any email -> Human feedback instantly updates future retrieval.
+5. Email #9 (SpamBot Inc) -> Instant $0-cost fast-path spam quarantine.
+
+I really enjoyed working on this challenge — especially designing the deterministic safety guardrails, stateful LangGraph workflows, and vector feedback loop to solve real publishing operations problems. I am genuinely excited about the mission at Notion Press and would love the opportunity to bring this level of engineering rigor, ownership, and speed to your team.
+
+I look forward to discussing the architecture with you and hope to take the next steps together!
+
+Best regards,
+Sharan
+Phone: +91 7338887170

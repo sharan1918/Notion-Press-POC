@@ -45,7 +45,12 @@ def get_llms():
     gemini = None
     if _is_valid_api_key(gemini_key):
         try:
-            gemini = ChatGoogleGenerativeAI(model="gemini-3.6-flash", max_retries=1, timeout=30.0)
+            gemini = ChatGoogleGenerativeAI(
+                model="gemini-3.6-flash",
+                google_api_key=gemini_key,
+                max_retries=3,
+                timeout=45.0,
+            )
         except Exception as e:
             logger.warning(f"Failed to initialize ChatGoogleGenerativeAI: {e}")
             gemini = None
@@ -53,7 +58,12 @@ def get_llms():
     groq = None
     if _is_valid_api_key(groq_key):
         try:
-            groq = ChatGroq(model="openai/gpt-oss-120b", max_retries=1, timeout=30.0)
+            groq = ChatGroq(
+                model="openai/gpt-oss-120b",
+                api_key=groq_key,
+                max_retries=2,
+                timeout=30.0,
+            )
         except Exception as e:
             logger.warning(f"Failed to initialize ChatGroq: {e}")
             groq = None
@@ -83,7 +93,7 @@ def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification
         try:
             structured_llm = gemini_llm.with_structured_output(EmailClassification)
             res = structured_llm.invoke(prompt)
-            return res, "Gemini 3.5 Flash"
+            return res, "Gemini 3.6 Flash"
         except Exception as e:
             log(state, f"Gemini execution error: {str(e)[:80]}")
             raise e
@@ -288,7 +298,7 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
             chain = RAG_REPLY_PROMPT_TEMPLATE | gemini_llm | output_parser
             raw = chain.invoke(rag_inputs)
             draft = extract_content_str(raw)
-            provider_used = "Gemini 3.5 Flash"
+            provider_used = "Gemini 3.6 Flash"
         except Exception as e:
             logger.warning(f"Gemini failed for RAG reply generation: {e}")
             log(state, f"Gemini failover error: {str(e)[:60]}")
@@ -297,16 +307,34 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
         state["draft_response"] = draft.strip()
         log(state, f"✨ [RAG] Grounded auto-reply generated via {provider_used} (LCEL)")
     else:
-        # Fallback template if LLM is unavailable
-        fallback_summary = retrieved_docs[0]["content"].split("\n")[0]
+        # Fallback template if LLMs are unavailable: format structured policy points cleanly
+        clean_policy_points = []
+        for doc in retrieved_docs[:2]:
+            lines = [l.strip() for l in doc["content"].split("\n") if l.strip()]
+            for line in lines:
+                if line.startswith(("-", "*", "•")):
+                    clean_policy_points.append(f"• {line.lstrip('-*• ')}")
+                elif ":" in line and not line.lower().startswith("http"):
+                    clean_policy_points.append(f"• {line}")
+                elif not clean_policy_points:
+                    clean_policy_points.append(f"• {line}")
+                elif len(clean_policy_points) < 6:
+                    clean_policy_points.append(f"• {line}")
+
+        policy_body = "\n".join(clean_policy_points[:6]) if clean_policy_points else "Please consult our standard publishing documentation at notionpress.com."
         state["draft_response"] = (
             f"Dear {email.sender_name},\n\n"
             f"Thank you for reaching out to Notion Press Support regarding '{email.subject}'.\n\n"
-            f"Based on our official guidelines: {fallback_summary}\n\n"
+            f"Based on our official guidelines:\n\n{policy_body}\n\n"
             f"Please let us know if you have any further questions.\n\n"
             f"Warm regards,\nNotion Press Author Support Team"
         )
-        log(state, "✨ [RAG] Standard auto-reply drafted from knowledge base")
+        # Require human review so un-synthesized fallback templates are never auto-sent blindly
+        state["approval_required"] = True
+        if state.get("guardrail_result"):
+            state["guardrail_result"].approval_required = True
+            state["guardrail_result"].reasons.append("RAG reply drafted via policy template (LLMs unavailable); human review required")
+        log(state, "⚠️ [RAG] LLM unavailable; drafted structured policy fallback requiring human approval")
 
     return state
 
@@ -327,7 +355,7 @@ def determine_action_node(state: EmailProcessingState) -> EmailProcessingState:
 
     if guardrail.missing_info_block:
         state["final_status"] = "pending_info"
-    elif guardrail.approval_required:
+    elif state.get("approval_required", False) or guardrail.approval_required:
         state["final_status"] = "pending_approval"
     else:
         state["final_status"] = "processing"
