@@ -226,19 +226,21 @@ export interface KnowledgeQueryResult {
 }
 
 export async function getKnowledgeStatus(): Promise<KnowledgeStatus> {
-  const res = await fetch(`${BASE}/knowledge/status`);
+  const res = await fetch(nestedPath("knowledge", "status"));
   if (!res.ok) throw new Error("Failed to fetch knowledge base status");
   return res.json();
 }
 
 export async function getKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
-  const res = await fetch(`${BASE}/knowledge/documents`);
+  const res = await fetch(nestedPath("knowledge", "documents"));
   if (!res.ok) throw new Error("Failed to list knowledge documents");
   return res.json();
 }
 
 export async function getKnowledgeChunks(filename?: string): Promise<KnowledgeChunk[]> {
-  const url = filename ? `${BASE}/knowledge/chunks?filename=${encodeURIComponent(filename)}` : `${BASE}/knowledge/chunks`;
+  const url = filename
+    ? `${nestedPath("knowledge", "chunks")}?filename=${encodeURIComponent(filename)}`
+    : nestedPath("knowledge", "chunks");
   const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to fetch knowledge chunks");
   return res.json();
@@ -253,7 +255,7 @@ export async function uploadKnowledgeDocument(file: File): Promise<{
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${BASE}/knowledge/upload`, {
+  const res = await fetch(nestedPath("knowledge", "upload"), {
     method: "POST",
     body: formData,
   });
@@ -270,7 +272,7 @@ export async function deleteKnowledgeDocument(filename: string): Promise<{
   deleted_chunks: number;
   status: KnowledgeStatus;
 }> {
-  const res = await fetch(`${BASE}/knowledge/documents/${encodeURIComponent(filename)}`, {
+  const res = await fetch(nestedPath("knowledge", "documents", filename), {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to delete knowledge document");
@@ -282,7 +284,7 @@ export async function clearKnowledgeBase(): Promise<{
   cleared_chunks: number;
   status: KnowledgeStatus;
 }> {
-  const res = await fetch(`${BASE}/knowledge/clear`, {
+  const res = await fetch(nestedPath("knowledge", "clear"), {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to clear knowledge base");
@@ -295,7 +297,7 @@ export async function quickSeedSamplePdf(): Promise<{
   chunks_indexed: number;
   status: KnowledgeStatus;
 }> {
-  const res = await fetch(`${BASE}/knowledge/quick-seed-sample`, {
+  const res = await fetch(nestedPath("knowledge", "quick-seed-sample"), {
     method: "POST",
   });
   if (!res.ok) throw new Error("Failed to quick-seed sample PDF");
@@ -307,7 +309,7 @@ export async function testKnowledgeQuery(query: string, top_k: number = 2): Prom
   results_count: number;
   results: KnowledgeQueryResult[];
 }> {
-  const res = await fetch(`${BASE}/knowledge/test-query`, {
+  const res = await fetch(nestedPath("knowledge", "test-query"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, top_k }),
@@ -317,5 +319,5 @@ export async function testKnowledgeQuery(query: string, top_k: number = 2): Prom
 }
 
 export function getSamplePdfDownloadUrl(): string {
-  return `${BASE}/knowledge/sample-pdf`;
+  return nestedPath("knowledge", "sample-pdf");
 }
