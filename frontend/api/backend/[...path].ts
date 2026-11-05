@@ -12,6 +12,9 @@ const HOP_BY_HOP_HEADERS = new Set([
   "content-length",
   "host",
   "transfer-encoding",
+  "accept-encoding",
+  "if-none-match",
+  "if-modified-since",
 ]);
 
 function readRequestBody(req: VercelRequest): Promise<Buffer> {
