@@ -163,8 +163,8 @@ export async function triageAllEmails(
 
   // Poll for job updates progressively in real time as each email finishes
   const jobId = data.job_id;
-  const pollInterval = 400; // 400ms for snappy per-email UI updates
-  const maxAttempts = 200; // up to 80 seconds
+  const pollInterval = 1000; // 1s avoids excessive status traffic in production
+  const maxAttempts = 120; // up to 2 minutes
   
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise(resolve => setTimeout(resolve, pollInterval));
@@ -177,7 +177,7 @@ export async function triageAllEmails(
         onProgress(jobData.results);
       }
 
-      if (jobData.status === "completed") {
+      if (["completed", "failed", "cancelled"].includes(jobData.status)) {
         return jobData.results || {};
       }
     } catch {

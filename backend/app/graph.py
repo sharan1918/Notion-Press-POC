@@ -1,9 +1,9 @@
 import os
 import logging
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt
 
@@ -20,7 +20,12 @@ from app.knowledge_base import author_knowledge_base
 from app.chroma_client import get_shared_embedding_function
 from app.utils import extract_content_str
 
-load_dotenv(override=True)
+# Always load the backend-local .env, even when uvicorn is started from the
+# repository root rather than from /backend.
+load_dotenv(
+    dotenv_path=Path(__file__).resolve().parents[1] / ".env",
+    override=True,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,101 +40,64 @@ def _is_valid_api_key(key: str | None) -> bool:
 
 def get_llms():
     global _CACHED_LLMS, _CACHED_KEYS
-    gemini_key = os.environ.get("GOOGLE_API_KEY")
-    groq_key = os.environ.get("GROQ_API_KEY")
-    current_keys = (gemini_key, groq_key)
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    model_primary = os.getenv("OPENROUTER_PRIMARY_MODEL", "openai/gpt-oss-120b")
+    model_secondary = os.getenv("OPENROUTER_SECONDARY_MODEL", "google/gemini-3.6-flash")
+    model_tertiary = os.getenv("OPENROUTER_TERTIARY_MODEL", "openai/gpt-oss-20b")
+    openrouter_base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    max_tokens = int(os.getenv("OPENROUTER_MAX_TOKENS", "1024"))
+    current_keys = (openrouter_key, model_primary, model_secondary, model_tertiary)
     
     if _CACHED_LLMS is not None and _CACHED_KEYS == current_keys:
         return _CACHED_LLMS
     
-    gemini = None
-    if _is_valid_api_key(gemini_key):
+    primary = None
+    secondary = None
+    tertiary = None
+    if _is_valid_api_key(openrouter_key):
         try:
-            gemini = ChatGoogleGenerativeAI(
-                model="gemini-3.6-flash",
-                google_api_key=gemini_key,
-                max_retries=3,
+            primary = ChatOpenAI(
+                model=model_primary,
+                api_key=openrouter_key,
+                base_url=openrouter_base_url,
+                max_retries=0,
                 timeout=45.0,
+                max_tokens=max_tokens,
+            )
+            secondary = ChatOpenAI(
+                model=model_secondary,
+                api_key=openrouter_key,
+                base_url=openrouter_base_url,
+                max_retries=0,
+                timeout=45.0,
+                max_tokens=max_tokens,
+            )
+            tertiary = ChatOpenAI(
+                model=model_tertiary,
+                api_key=openrouter_key,
+                base_url=openrouter_base_url,
+                max_retries=0,
+                timeout=45.0,
+                max_tokens=max_tokens,
             )
         except Exception as e:
-            logger.warning(f"Failed to initialize ChatGoogleGenerativeAI: {e}")
-            gemini = None
-
-    groq = None
-    groq_tertiary = None
-    if _is_valid_api_key(groq_key):
-        try:
-            groq = ChatGroq(
-                model="openai/gpt-oss-120b",
-                api_key=groq_key,
-                max_retries=2,
-                timeout=30.0,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to initialize ChatGroq (gpt-oss-120b): {e}")
-            groq = None
-
-        try:
-            groq_tertiary = ChatGroq(
-                model="openai/gpt-oss-20b",
-                api_key=groq_key,
-                max_retries=2,
-                timeout=30.0,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to initialize ChatGroq (openai/gpt-oss-20b): {e}")
-            groq_tertiary = None
+            logger.warning(f"Failed to initialize OpenRouter models: {e}")
+            primary = secondary = tertiary = None
             
-    _CACHED_LLMS = (gemini, groq, groq_tertiary)
+    _CACHED_LLMS = (primary, secondary, tertiary)
     _CACHED_KEYS = current_keys
-    return gemini, groq, groq_tertiary
+    return primary, secondary, tertiary
 
 def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification, str]:
     llms = get_llms()
-    gemini_llm = llms[0] if len(llms) > 0 else None
-    groq_llm = llms[1] if len(llms) > 1 else None
-    groq_tertiary_llm = llms[2] if len(llms) > 2 else None
-    
-    # 1. Attempt Groq Primary (GPT-OSS-120B)
-    if groq_llm:
-        try:
-            structured_llm = groq_llm.with_structured_output(EmailClassification)
-            res = structured_llm.invoke(prompt)
-            return res, "Groq (GPT-OSS-120B)"
-        except Exception as e:
-            err_msg = str(e)
-            if gemini_llm:
-                log(state, f"Groq primary rate limit/error ({err_msg[:60]}...). Automatically switching to Gemini failover...")
-            elif groq_tertiary_llm:
-                log(state, f"Groq primary rate limit/error ({err_msg[:60]}...). Switching to Groq 20B fallback...")
-            else:
-                raise e
-                
-    # 2. Attempt Gemini Secondary Failover (Gemini 3.6 Flash)
-    if gemini_llm:
-        try:
-            structured_llm = gemini_llm.with_structured_output(EmailClassification)
-            res = structured_llm.invoke(prompt)
-            return res, "Gemini 3.6 Flash"
-        except Exception as e:
-            err_msg = str(e)
-            log(state, f"Gemini execution error: {err_msg[:60]}")
-            if groq_tertiary_llm:
-                log(state, "Gemini failed/quota exhausted. Automatically switching to tertiary fallback: Groq (GPT-OSS-20B)...")
-            else:
-                raise e
+    candidates = [llm for llm in llms if llm is not None]
+    if not candidates:
+        raise RuntimeError("No working LLM provider found. Please set OPENROUTER_API_KEY in backend/.env")
 
-    # 3. Attempt Groq Tertiary Failover (GPT-OSS-20B)
-    if groq_tertiary_llm:
-        try:
-            structured_llm = groq_tertiary_llm.with_structured_output(EmailClassification)
-            res = structured_llm.invoke(prompt)
-            return res, "Groq (GPT-OSS-20B)"
-        except Exception as e:
-            log(state, f"Groq 20B fallback error: {str(e)[:60]}")
-            raise e
-        
-    raise RuntimeError("No working LLM provider found. Please set GOOGLE_API_KEY or GROQ_API_KEY in backend/.env")
+    structured = candidates[0].with_structured_output(EmailClassification)
+    fallbacks = [llm.with_structured_output(EmailClassification) for llm in candidates[1:]]
+    result = structured.with_fallbacks(fallbacks).invoke(prompt)
+    return result, "OpenRouter model fallback chain"
 
 def log(state: dict, message: str):
     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -304,57 +272,21 @@ def generate_rag_reply(state: EmailProcessingState) -> EmailProcessingState:
         "body": safe_body,
     }
 
-    llms = get_llms()
-    gemini_llm = llms[0] if len(llms) > 0 else None
-    groq_llm = llms[1] if len(llms) > 1 else None
-    groq_tertiary_llm = llms[2] if len(llms) > 2 else None
+    llms = [llm for llm in get_llms() if llm is not None]
     output_parser = StrOutputParser()
     draft = None
-    provider_used = None
-
-    # 1. Attempt Groq (Primary: GPT-OSS-120B)
-    if groq_llm:
+    if llms:
         try:
-            # Declarative LangChain Expression Language (LCEL) chain
-            chain = RAG_REPLY_PROMPT_TEMPLATE | groq_llm | output_parser
-            raw = chain.invoke(rag_inputs)
-            draft = extract_content_str(raw)
-            provider_used = "Groq (GPT-OSS-120B)"
+            chains = [RAG_REPLY_PROMPT_TEMPLATE | llm | output_parser for llm in llms]
+            chain = chains[0].with_fallbacks(chains[1:])
+            draft = extract_content_str(chain.invoke(rag_inputs))
         except Exception as e:
-            logger.warning(f"Groq primary failed for RAG reply generation: {e}")
-            if gemini_llm:
-                log(state, f"Groq primary error/timeout ({str(e)[:60]}...). Automatically switching to Gemini failover for RAG...")
-            elif groq_tertiary_llm:
-                log(state, f"Groq primary error/timeout ({str(e)[:60]}...). Switching to Groq 20B fallback for RAG...")
-
-    # 2. Attempt Gemini (Secondary Failover: Gemini 3.6 Flash)
-    if not draft and gemini_llm:
-        try:
-            # Declarative LangChain Expression Language (LCEL) failover chain
-            chain = RAG_REPLY_PROMPT_TEMPLATE | gemini_llm | output_parser
-            raw = chain.invoke(rag_inputs)
-            draft = extract_content_str(raw)
-            provider_used = "Gemini 3.6 Flash"
-        except Exception as e:
-            logger.warning(f"Gemini failed for RAG reply generation: {e}")
-            log(state, f"Gemini failover error: {str(e)[:60]}")
-            if groq_tertiary_llm:
-                log(state, "Gemini failed for RAG. Automatically switching to tertiary fallback: Groq (GPT-OSS-20B)...")
-
-    # 3. Attempt Groq Tertiary Failover (GPT-OSS-20B)
-    if not draft and groq_tertiary_llm:
-        try:
-            chain = RAG_REPLY_PROMPT_TEMPLATE | groq_tertiary_llm | output_parser
-            raw = chain.invoke(rag_inputs)
-            draft = extract_content_str(raw)
-            provider_used = "Groq (GPT-OSS-20B)"
-        except Exception as e:
-            logger.warning(f"Groq 20B failed for RAG reply generation: {e}")
-            log(state, f"Groq 20B failover error: {str(e)[:60]}")
+            logger.warning(f"OpenRouter model fallback chain failed for RAG reply generation: {e}")
+            log(state, f"OpenRouter RAG fallback chain failed: {str(e)[:60]}")
 
     if draft and draft.strip():
         state["draft_response"] = draft.strip()
-        log(state, f"✨ [RAG] Grounded auto-reply generated via {provider_used} (LCEL)")
+        log(state, "✨ [RAG] Grounded auto-reply generated via OpenRouter model fallback chain (LCEL)")
     else:
         # Fallback template if LLMs are unavailable: format structured policy points cleanly
         clean_policy_points = []

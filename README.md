@@ -155,7 +155,7 @@ flowchart TD
 - **Why LangChain?** Used strictly for model interfaces and structured output abstraction (`.with_structured_output()`). No unnecessary agents or chains.
 - **Why not multi-agent?** A single AI decision component inside a stateful workflow is simpler, easier to test, and more reliable than a swarm of autonomous agents.
 - **Why deterministic guardrails?** An LLM should recommend actions, but standard Python code should enforce business safety logic.
-- **Why ChromaDB & Resilient Hybrid Embeddings?** Employs a shared singleton ChromaDB client with resilient hybrid embeddings: primary Google Gemini Cloud (`models/gemini-embedding-001`, 384-dim via Matryoshka Representation Learning) offloading neural net compute to Google Cloud GPUs, with seamless automatic fallback to local ONNX (`all-MiniLM-L6-v2`, 384-dim). Powers semantic few-shot correction retrieval, intent caching, and verified policy RAG with zero memory duplication.
+- **Why ChromaDB & Resilient Hybrid Embeddings?** Employs a shared singleton ChromaDB client with resilient hybrid embeddings: primary OpenRouter Google Gemini Embedding 001 (`google/gemini-embedding-001`, 384-dim), with seamless automatic fallback to local ONNX (`all-MiniLM-L6-v2`, 384-dim). Powers semantic few-shot correction retrieval, intent caching, and verified policy RAG with zero memory duplication.
 - **Why Concurrent Triage (Concurrency = 2) & Model Observability?** Bulk inbox triage executes concurrently with 2 parallel workers (`TRIAGE_CONCURRENCY=2`) and a 0.5s stagger delay to prevent token-per-minute bursts on free-tier APIs. Every embedding and LLM invocation outputs its active model name directly into terminal logs and the frontend UI's live processing log.
 
 ## 📚 Assessment Deliverables & Documentation
@@ -173,7 +173,7 @@ flowchart TD
    cd backend
    uv venv
    uv pip install -r requirements.txt
-   # Copy .env.example to .env and add your GOOGLE_API_KEY
+   # Copy .env.example to .env and add your OPENROUTER_API_KEY
    uv run uvicorn app.main:app --reload
    ```
 3. **Frontend Setup**
