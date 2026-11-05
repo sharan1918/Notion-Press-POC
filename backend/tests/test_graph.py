@@ -12,9 +12,9 @@ from app.graph import (
     fetch_and_classify,
     route_after_classify,
 )
-from app.config import MAX_LLM_RETRIES
+from app.config import MAX_LLM_RETRIES, API_AUTH_KEY
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-API-Key": API_AUTH_KEY})
 
 def test_health():
     response = client.get("/api/health")
@@ -66,11 +66,31 @@ def test_serialize_state():
     assert serialized["nested"]["status_set"] == ["done"]
     assert "custom_obj" not in serialized  # Non-serializable object safely omitted
 
-def test_get_llms_initialization():
-    with patch.dict("os.environ", {"GOOGLE_API_KEY": "AIzaSyValidGoogleKey123456789", "GROQ_API_KEY": "gsk_validGroqKey123456789"}):
-        gemini, groq, groq_tertiary = get_llms()
-        # When valid keys are provided, clients are initialized
-        assert gemini is not None or groq is not None or groq_tertiary is not None
+def test_get_llms_initialization(monkeypatch):
+    """Verify OpenRouter clients are configured without contacting the API."""
+    import app.graph as graph_module
+
+    monkeypatch.setattr(graph_module, "_CACHED_LLMS", None)
+    monkeypatch.setattr(graph_module, "_CACHED_KEYS", None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key-12345")
+    monkeypatch.setenv("OPENROUTER_BASE_URL", "https://openrouter.example/v1")
+    monkeypatch.setenv("OPENROUTER_PRIMARY_MODEL", "provider/primary-test")
+    monkeypatch.setenv("OPENROUTER_SECONDARY_MODEL", "provider/secondary-test")
+    monkeypatch.setenv("OPENROUTER_TERTIARY_MODEL", "provider/tertiary-test")
+
+    with patch("app.graph.ChatOpenAI") as mock_chat_openai:
+        clients = get_llms()
+
+    assert all(client is not None for client in clients)
+    assert mock_chat_openai.call_count == 3
+    assert [call.kwargs["model"] for call in mock_chat_openai.call_args_list] == [
+        "provider/primary-test",
+        "provider/secondary-test",
+        "provider/tertiary-test",
+    ]
+    for call in mock_chat_openai.call_args_list:
+        assert call.kwargs["api_key"] == "test-openrouter-key-12345"
+        assert call.kwargs["base_url"] == "https://openrouter.example/v1"
 
 def test_invoke_classification_gemini_success():
     expected_cls = EmailClassification(
@@ -83,13 +103,13 @@ def test_invoke_classification_gemini_success():
     )
     
     mock_groq = MagicMock()
-    mock_groq.with_structured_output.return_value.invoke.return_value = expected_cls
+    mock_groq.with_structured_output.return_value.with_fallbacks.return_value.invoke.return_value = expected_cls
     
     with patch("app.graph.get_llms", return_value=(None, mock_groq, None)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "publishing_status"
-        assert provider == "Groq (GPT-OSS-120B)"
+        assert provider == "OpenRouter model fallback chain"
 
 def test_invoke_classification_failover_to_gemini():
     expected_cls = EmailClassification(
@@ -102,16 +122,15 @@ def test_invoke_classification_failover_to_gemini():
     )
     
     mock_groq = MagicMock()
-    mock_groq.with_structured_output.return_value.invoke.side_effect = RuntimeError("Rate limit reached")
+    mock_groq.with_structured_output.return_value.with_fallbacks.return_value.invoke.return_value = expected_cls
     
     mock_gemini = MagicMock()
-    mock_gemini.with_structured_output.return_value.invoke.return_value = expected_cls
     
-    with patch("app.graph.get_llms", return_value=(mock_gemini, mock_groq, None)):
+    with patch("app.graph.get_llms", return_value=(mock_groq, mock_gemini, None)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "cover_design"
-        assert provider == "Gemini 3.6 Flash"
+        assert provider == "OpenRouter model fallback chain"
 
 def test_invoke_classification_failover_to_tertiary():
     expected_cls = EmailClassification(
@@ -124,19 +143,17 @@ def test_invoke_classification_failover_to_tertiary():
     )
     
     mock_groq = MagicMock()
-    mock_groq.with_structured_output.return_value.invoke.side_effect = RuntimeError("Groq 120B rate limit reached")
+    mock_groq.with_structured_output.return_value.with_fallbacks.return_value.invoke.return_value = expected_cls
     
     mock_gemini = MagicMock()
-    mock_gemini.with_structured_output.return_value.invoke.side_effect = RuntimeError("Gemini quota 429")
     
     mock_tertiary = MagicMock()
-    mock_tertiary.with_structured_output.return_value.invoke.return_value = expected_cls
     
-    with patch("app.graph.get_llms", return_value=(mock_gemini, mock_groq, mock_tertiary)):
+    with patch("app.graph.get_llms", return_value=(mock_groq, mock_gemini, mock_tertiary)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "cover_design"
-        assert provider == "Groq (GPT-OSS-20B)"
+        assert provider == "OpenRouter model fallback chain"
 
 def test_invoke_classification_no_provider_raises():
     with patch("app.graph.get_llms", return_value=(None, None, None)):

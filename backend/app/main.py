@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+import secrets
 from typing import Optional
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
@@ -101,8 +102,8 @@ if not origins:
 cors_kwargs = {
     "allow_origins": origins,
     "allow_credentials": True,
-    "allow_methods": ["*"],
-    "allow_headers": ["*"],
+    "allow_methods": ["GET", "POST", "DELETE", "OPTIONS"],
+    "allow_headers": ["Content-Type", "X-API-Key"],
 }
 cors_origin_regex = os.environ.get("CORS_ORIGIN_REGEX")
 if cors_origin_regex:
@@ -116,6 +117,31 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     print(f"<-- [{request.method}] {request.url.path} => {response.status_code}", flush=True)
     return response
+
+
+# The health endpoint must remain public for Northflank health checks. Every
+# other application API route is protected by the server-side API key. The
+# Vercel proxy supplies this header; browsers never receive the key.
+PUBLIC_API_PATHS = {"/api/health"}
+
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    path = request.url.path
+
+    # CORS preflight requests do not carry the application credential. The
+    # CORSMiddleware validates the Origin and handles the preflight response.
+    if request.method == "OPTIONS" or not path.startswith("/api/") or path in PUBLIC_API_PATHS:
+        return await call_next(request)
+
+    supplied_key = request.headers.get("X-API-Key")
+    if not supplied_key or not secrets.compare_digest(supplied_key, API_AUTH_KEY):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid or missing API key"},
+        )
+
+    return await call_next(request)
 
 
 class InMemoryRateLimiter:

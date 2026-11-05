@@ -1,14 +1,13 @@
 fastapi
 uvicorn[standard]
-langchain-google-genai
-langchain-groq
+langchain-openai
 langgraph
 langgraph-checkpoint-sqlite
 pydantic
 python-dotenv
 pytest
 httpx
-chromadb
+chromadb>=1.0.0
 pypdf
 reportlab
 python-multipart

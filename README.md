@@ -155,7 +155,7 @@ flowchart TD
 - **Why LangChain?** Used strictly for model interfaces and structured output abstraction (`.with_structured_output()`). No unnecessary agents or chains.
 - **Why not multi-agent?** A single AI decision component inside a stateful workflow is simpler, easier to test, and more reliable than a swarm of autonomous agents.
 - **Why deterministic guardrails?** An LLM should recommend actions, but standard Python code should enforce business safety logic.
-- **Why ChromaDB & Resilient Hybrid Embeddings?** Employs a shared singleton ChromaDB client with resilient hybrid embeddings: primary Google Gemini Cloud (`models/gemini-embedding-001`, 384-dim via Matryoshka Representation Learning) offloading neural net compute to Google Cloud GPUs, with seamless automatic fallback to local ONNX (`all-MiniLM-L6-v2`, 384-dim). Powers semantic few-shot correction retrieval, intent caching, and verified policy RAG with zero memory duplication.
+- **Why ChromaDB & Resilient Hybrid Embeddings?** Employs a shared singleton ChromaDB client with resilient hybrid embeddings: primary OpenRouter Google Gemini Embedding 001 (`google/gemini-embedding-001`, 384-dim), with seamless automatic fallback to local ONNX (`all-MiniLM-L6-v2`, 384-dim). Powers semantic few-shot correction retrieval, intent caching, and verified policy RAG with zero memory duplication.
 - **Why Concurrent Triage (Concurrency = 2) & Model Observability?** Bulk inbox triage executes concurrently with 2 parallel workers (`TRIAGE_CONCURRENCY=2`) and a 0.5s stagger delay to prevent token-per-minute bursts on free-tier APIs. Every embedding and LLM invocation outputs its active model name directly into terminal logs and the frontend UI's live processing log.
 
 ## 📚 Assessment Deliverables & Documentation
@@ -173,7 +173,7 @@ flowchart TD
    cd backend
    uv venv
    uv pip install -r requirements.txt
-   # Copy .env.example to .env and add your GOOGLE_API_KEY
+   # Copy .env.example to .env and add your OPENROUTER_API_KEY
    uv run uvicorn app.main:app --reload
    ```
 3. **Frontend Setup**
@@ -257,3 +257,12 @@ uv run pytest
 - **CI Pipeline**: Automated backend test suite (`pytest`) and frontend verification (`oxlint` + `vite build`) via GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 - **Backend Deployment**: Containerized on **Northflank** via [`backend/Dockerfile`](backend/Dockerfile) with automated Git builds, dynamic port handling (`${PORT:-8000}`), health checks, and secure CORS headers.
 - **Frontend Deployment**: Hosted on **Vercel** with global edge CDN and automatic PR previews.
+- **Frontend API Proxy**: Vercel serverless function at `/api/backend/*` forwards requests to the Northflank backend and injects the private `API_AUTH_KEY` server-side. Configure `BACKEND_API_URL` and `API_AUTH_KEY` in Vercel; do not use `VITE_API_KEY`.
+- **API Security**: `GET /api/health` is public for Northflank health checks. Every other `/api/*` route requires the `X-API-Key` header. Configure the same private `API_AUTH_KEY` in Northflank and the Vercel proxy; never expose it with a `VITE_` prefix. Configure `CORS_ORIGINS` with the approved frontend origins (for example, `http://localhost:5173,https://notion-press-poc.vercel.app`).
+
+For the Vercel project, set these server-side environment variables for Production and Preview:
+
+```env
+BACKEND_API_URL=https://your-northflank-backend.example.com/api
+API_AUTH_KEY=<same-private-key-configured-on-the-backend>
+```

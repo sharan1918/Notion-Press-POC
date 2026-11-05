@@ -23,6 +23,7 @@ export default function App() {
   const [streamingIds, setStreamingIds] = useState<Set<string>>(new Set());
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState(false);
   const abortControllersRef = useRef<Record<string, () => void>>({});
+  const autoTriageStartedRef = useRef(false);
 
   const startStreaming = useCallback((id: string, force: boolean = false) => {
     // If not forced and already cached, skip
@@ -104,6 +105,11 @@ export default function App() {
 
   // Initial load + background auto-triage
   useEffect(() => {
+    // React StrictMode runs effects twice in development. Keep the batch job
+    // idempotent so one page load creates only one triage job.
+    if (autoTriageStartedRef.current) return;
+    autoTriageStartedRef.current = true;
+
     getEmails().then(data => {
       setEmails(data);
       if (data.length > 0) {
@@ -144,6 +150,10 @@ export default function App() {
       }).catch(err => {
         console.warn("Background triage failed (non-blocking):", err);
       });
+    }).catch(err => {
+      // Allow a later mount/retry if the initial inbox load itself fails.
+      autoTriageStartedRef.current = false;
+      console.error("Initial email load failed:", err);
     });
   }, []);
 

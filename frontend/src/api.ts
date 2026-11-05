@@ -1,7 +1,9 @@
 import type { Email, ProcessingResponse, HumanCorrection, CreateEmailPayload } from "./types";
 
-const BASE = import.meta.env.VITE_API_BASE_URL || "/api";
-const API_KEY = (import.meta.env.VITE_API_KEY as string) || "notion-poc-author-key-2026";
+// All browser requests go through the same-origin Vercel proxy. The proxy
+// adds the private backend API key server-side, so no credential is bundled
+// into the client JavaScript.
+const BASE = "/api/backend";
 
 export async function getEmails(): Promise<Email[]> {
   const res = await fetch(`${BASE}/emails`);
@@ -13,7 +15,6 @@ export async function createEmail(emailData: CreateEmailPayload): Promise<Email>
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": API_KEY,
     },
     body: JSON.stringify(emailData),
   });
@@ -163,8 +164,8 @@ export async function triageAllEmails(
 
   // Poll for job updates progressively in real time as each email finishes
   const jobId = data.job_id;
-  const pollInterval = 400; // 400ms for snappy per-email UI updates
-  const maxAttempts = 200; // up to 80 seconds
+  const pollInterval = 1000; // 1s avoids excessive status traffic in production
+  const maxAttempts = 120; // up to 2 minutes
   
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise(resolve => setTimeout(resolve, pollInterval));
@@ -177,7 +178,7 @@ export async function triageAllEmails(
         onProgress(jobData.results);
       }
 
-      if (jobData.status === "completed") {
+      if (["completed", "failed", "cancelled"].includes(jobData.status)) {
         return jobData.results || {};
       }
     } catch {
