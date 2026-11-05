@@ -86,13 +86,16 @@ export default async function handler(
       }
     });
 
-    if (!upstream.body) {
-      return res.end();
+    const contentType = upstream.headers.get("content-type") || "";
+    if (contentType.includes("text/event-stream") && upstream.body) {
+      // Preserve SSE streaming for /process-stream/* instead of buffering the
+      // complete LangGraph response in the proxy.
+      return Readable.fromWeb(upstream.body as never).pipe(res);
     }
 
-    // Preserve SSE streaming for /process-stream/* instead of buffering the
-    // complete LangGraph response in the proxy.
-    return Readable.fromWeb(upstream.body as never).pipe(res);
+    // Buffer normal JSON/file responses so Vercel sends the complete body.
+    const responseBody = Buffer.from(await upstream.arrayBuffer());
+    return res.end(responseBody);
   } catch (error) {
     console.error("Backend proxy request failed:", error);
     return res.status(502).json({ detail: "Backend unavailable" });
