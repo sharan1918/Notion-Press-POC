@@ -5,6 +5,11 @@ import type { Email, ProcessingResponse, HumanCorrection, CreateEmailPayload } f
 // into the client JavaScript.
 const BASE = "/api/backend";
 
+// Vercel's catch-all function is deployed as a single API segment. Encode
+// nested backend paths so routes such as triage-status/{job_id} reach it.
+const nestedPath = (...segments: string[]) =>
+  `${BASE}/${encodeURIComponent(segments.join("/"))}`;
+
 export async function getEmails(): Promise<Email[]> {
   const res = await fetch(`${BASE}/emails`);
   return res.json();
@@ -26,7 +31,7 @@ export async function createEmail(emailData: CreateEmailPayload): Promise<Email>
 }
 
 export async function processEmail(id: string): Promise<ProcessingResponse> {
-  const res = await fetch(`${BASE}/process/${id}`, { method: "POST" });
+  const res = await fetch(nestedPath("process", id), { method: "POST" });
   return res.json();
 }
 
@@ -44,7 +49,7 @@ export function streamProcessEmail(
 
   (async () => {
     try {
-      const response = await fetch(`${BASE}/process-stream/${id}`, {
+      const response = await fetch(nestedPath("process-stream", id), {
         signal: controller.signal,
         headers: { Accept: "text/event-stream" },
       });
@@ -105,12 +110,12 @@ export function streamProcessEmail(
 }
 
 export async function approveAction(threadId: string): Promise<ProcessingResponse> {
-  const res = await fetch(`${BASE}/approve/${threadId}`, { method: "POST" });
+  const res = await fetch(nestedPath("approve", threadId), { method: "POST" });
   return res.json();
 }
 
 export async function rejectAction(threadId: string): Promise<ProcessingResponse> {
-  const res = await fetch(`${BASE}/reject/${threadId}`, { method: "POST" });
+  const res = await fetch(nestedPath("reject", threadId), { method: "POST" });
   return res.json();
 }
 
@@ -119,7 +124,7 @@ export async function correctClassification(
   correctedIntent: string,
   notes: string
 ): Promise<ProcessingResponse> {
-  const res = await fetch(`${BASE}/correct/${threadId}`, {
+  const res = await fetch(nestedPath("correct", threadId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ corrected_intent: correctedIntent, notes }),
@@ -132,7 +137,7 @@ export async function provideInfo(
   additionalInfo: string,
   attachments: string[] = []
 ): Promise<ProcessingResponse> {
-  const res = await fetch(`${BASE}/provide-info/${threadId}`, {
+  const res = await fetch(nestedPath("provide-info", threadId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ additional_info: additionalInfo, attachments }),
@@ -170,7 +175,7 @@ export async function triageAllEmails(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise(resolve => setTimeout(resolve, pollInterval));
     try {
-      const statusRes = await fetch(`${BASE}/triage-status/${jobId}`);
+      const statusRes = await fetch(nestedPath("triage-status", jobId));
       if (!statusRes.ok) continue;
       const jobData = await statusRes.json();
       
