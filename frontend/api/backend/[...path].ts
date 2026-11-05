@@ -55,6 +55,7 @@ export default async function handler(
   // It is an internal routing value and must not be forwarded upstream.
   const forwardedQuery = new URLSearchParams(incomingUrl.searchParams);
   forwardedQuery.delete("path");
+  forwardedQuery.delete("...path");
   const queryString = forwardedQuery.toString();
   const targetUrl = `${backendUrl}/${path}${queryString ? `?${queryString}` : ""}`;
   const body = ["GET", "HEAD"].includes(req.method || "GET")
