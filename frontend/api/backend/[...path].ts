@@ -12,6 +12,7 @@ const HOP_BY_HOP_HEADERS = new Set([
   "content-length",
   "host",
   "transfer-encoding",
+  "content-encoding",
   "accept-encoding",
   "if-none-match",
   "if-modified-since",
