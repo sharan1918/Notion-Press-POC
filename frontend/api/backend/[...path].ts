@@ -54,8 +54,11 @@ export default async function handler(
   // Vercel includes the catch-all route parameter in req.url as `?path=...`.
   // It is an internal routing value and must not be forwarded upstream.
   const forwardedQuery = new URLSearchParams(incomingUrl.searchParams);
-  forwardedQuery.delete("path");
-  forwardedQuery.delete("...path");
+  for (const key of [...forwardedQuery.keys()]) {
+    if (key === "path" || key.endsWith("path")) {
+      forwardedQuery.delete(key);
+    }
+  }
   const queryString = forwardedQuery.toString();
   const targetUrl = `${backendUrl}/${path}${queryString ? `?${queryString}` : ""}`;
   const body = ["GET", "HEAD"].includes(req.method || "GET")
