@@ -51,8 +51,12 @@ export default async function handler(
     .replace(/^backend\//, "")
     .replace(/^api\//, "");
   const incomingUrl = new URL(req.url || "/", "http://vercel-proxy.local");
-  const targetUrl = `${backendUrl}/${path}${incomingUrl.search}`;
-  console.info(`[Backend Proxy] ${req.method} ${req.url} -> ${targetUrl}`);
+  // Vercel includes the catch-all route parameter in req.url as `?path=...`.
+  // It is an internal routing value and must not be forwarded upstream.
+  const forwardedQuery = new URLSearchParams(incomingUrl.searchParams);
+  forwardedQuery.delete("path");
+  const queryString = forwardedQuery.toString();
+  const targetUrl = `${backendUrl}/${path}${queryString ? `?${queryString}` : ""}`;
   const body = ["GET", "HEAD"].includes(req.method || "GET")
     ? undefined
     : await readRequestBody(req);
