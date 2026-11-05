@@ -52,6 +52,7 @@ export default async function handler(
     .replace(/^api\//, "");
   const incomingUrl = new URL(req.url || "/", "http://vercel-proxy.local");
   const targetUrl = `${backendUrl}/${path}${incomingUrl.search}`;
+  console.info(`[Backend Proxy] ${req.method} ${req.url} -> ${targetUrl}`);
   const body = ["GET", "HEAD"].includes(req.method || "GET")
     ? undefined
     : await readRequestBody(req);
