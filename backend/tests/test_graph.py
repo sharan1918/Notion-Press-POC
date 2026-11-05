@@ -66,11 +66,31 @@ def test_serialize_state():
     assert serialized["nested"]["status_set"] == ["done"]
     assert "custom_obj" not in serialized  # Non-serializable object safely omitted
 
-def test_get_llms_initialization():
-    with patch.dict("os.environ", {"GOOGLE_API_KEY": "AIzaSyValidGoogleKey123456789", "GROQ_API_KEY": "gsk_validGroqKey123456789"}):
-        gemini, groq, groq_tertiary = get_llms()
-        # When valid keys are provided, clients are initialized
-        assert gemini is not None or groq is not None or groq_tertiary is not None
+def test_get_llms_initialization(monkeypatch):
+    """Verify OpenRouter clients are configured without contacting the API."""
+    import app.graph as graph_module
+
+    monkeypatch.setattr(graph_module, "_CACHED_LLMS", None)
+    monkeypatch.setattr(graph_module, "_CACHED_KEYS", None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key-12345")
+    monkeypatch.setenv("OPENROUTER_BASE_URL", "https://openrouter.example/v1")
+    monkeypatch.setenv("OPENROUTER_PRIMARY_MODEL", "provider/primary-test")
+    monkeypatch.setenv("OPENROUTER_SECONDARY_MODEL", "provider/secondary-test")
+    monkeypatch.setenv("OPENROUTER_TERTIARY_MODEL", "provider/tertiary-test")
+
+    with patch("app.graph.ChatOpenAI") as mock_chat_openai:
+        clients = get_llms()
+
+    assert all(client is not None for client in clients)
+    assert mock_chat_openai.call_count == 3
+    assert [call.kwargs["model"] for call in mock_chat_openai.call_args_list] == [
+        "provider/primary-test",
+        "provider/secondary-test",
+        "provider/tertiary-test",
+    ]
+    for call in mock_chat_openai.call_args_list:
+        assert call.kwargs["api_key"] == "test-openrouter-key-12345"
+        assert call.kwargs["base_url"] == "https://openrouter.example/v1"
 
 def test_invoke_classification_gemini_success():
     expected_cls = EmailClassification(
