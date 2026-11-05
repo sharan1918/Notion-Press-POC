@@ -86,8 +86,8 @@ export default async function handler(
       }
     });
 
-    const contentType = upstream.headers.get("content-type") || "";
-    if (contentType.includes("text/event-stream") && upstream.body) {
+    const isProcessingStream = path.startsWith("process-stream/");
+    if (isProcessingStream && upstream.body) {
       // Preserve SSE streaming for /process-stream/* instead of buffering the
       // complete LangGraph response in the proxy.
       return Readable.fromWeb(upstream.body as never).pipe(res);
