@@ -39,9 +39,17 @@ export default async function handler(
   }
 
   const pathParam = req.query.path;
-  const path = Array.isArray(pathParam)
+  const rawPath = Array.isArray(pathParam)
     ? pathParam.join("/")
     : pathParam || "";
+  // Depending on the Vercel project routing configuration, catch-all params
+  // can include the parent `api` or `backend` segment. Strip those prefixes
+  // so BACKEND_API_URL can consistently end with `/api`.
+  const path = rawPath
+    .replace(/^\/+/, "")
+    .replace(/^api\/backend\//, "")
+    .replace(/^backend\//, "")
+    .replace(/^api\//, "");
   const incomingUrl = new URL(req.url || "/", "http://vercel-proxy.local");
   const targetUrl = `${backendUrl}/${path}${incomingUrl.search}`;
   const body = ["GET", "HEAD"].includes(req.method || "GET")
