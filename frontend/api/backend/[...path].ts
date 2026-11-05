@@ -38,7 +38,7 @@ export default async function handler(
     });
   }
 
-  const pathParam = req.query.path;
+  const pathParam = req.query.path ?? req.query["...path"];
   const rawPath = Array.isArray(pathParam)
     ? pathParam.join("/")
     : pathParam || "";
