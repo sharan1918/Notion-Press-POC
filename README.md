@@ -257,3 +257,12 @@ uv run pytest
 - **CI Pipeline**: Automated backend test suite (`pytest`) and frontend verification (`oxlint` + `vite build`) via GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 - **Backend Deployment**: Containerized on **Northflank** via [`backend/Dockerfile`](backend/Dockerfile) with automated Git builds, dynamic port handling (`${PORT:-8000}`), health checks, and secure CORS headers.
 - **Frontend Deployment**: Hosted on **Vercel** with global edge CDN and automatic PR previews.
+- **Frontend API Proxy**: Vercel serverless function at `/api/backend/*` forwards requests to the Northflank backend and injects the private `API_AUTH_KEY` server-side. Configure `BACKEND_API_URL` and `API_AUTH_KEY` in Vercel; do not use `VITE_API_KEY`.
+- **API Security**: `GET /api/health` is public for Northflank health checks. Every other `/api/*` route requires the `X-API-Key` header. Configure the same private `API_AUTH_KEY` in Northflank and the Vercel proxy; never expose it with a `VITE_` prefix. Configure `CORS_ORIGINS` with the approved frontend origins (for example, `http://localhost:5173,https://notion-press-poc.vercel.app`).
+
+For the Vercel project, set these server-side environment variables for Production and Preview:
+
+```env
+BACKEND_API_URL=https://your-northflank-backend.example.com/api
+API_AUTH_KEY=<same-private-key-configured-on-the-backend>
+```

@@ -12,9 +12,9 @@ from app.graph import (
     fetch_and_classify,
     route_after_classify,
 )
-from app.config import MAX_LLM_RETRIES
+from app.config import MAX_LLM_RETRIES, API_AUTH_KEY
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-API-Key": API_AUTH_KEY})
 
 def test_health():
     response = client.get("/api/health")

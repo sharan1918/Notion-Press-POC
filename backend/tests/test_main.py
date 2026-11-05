@@ -4,8 +4,9 @@ from app.main import app, triage_jobs, email_rate_limiter
 from app.sample_emails import SAMPLE_EMAILS
 from app.config import API_AUTH_KEY
 
-client = TestClient(app)
 AUTH_HEADERS = {"X-API-Key": API_AUTH_KEY}
+client = TestClient(app, headers=AUTH_HEADERS)
+unauthenticated_client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def clear_jobs():
@@ -39,6 +40,16 @@ def test_triage_status_not_found():
     response = client.get("/api/triage-status/invalid_job_id")
     assert response.status_code == 404
 
+
+def test_protected_api_requires_key_and_health_is_public():
+    protected = unauthenticated_client.get("/api/emails")
+    assert protected.status_code == 401
+    assert protected.json()["detail"] == "Invalid or missing API key"
+
+    health = unauthenticated_client.get("/api/health")
+    assert health.status_code == 200
+    assert health.json() == {"status": "ok"}
+
 def test_get_emails_includes_samples():
     response = client.get("/api/emails")
     assert response.status_code == 200
@@ -56,7 +67,7 @@ def test_create_custom_email_unauthorized():
         "body": "Hello world"
     }
     # Missing header
-    res_no_key = client.post("/api/emails", json=payload)
+    res_no_key = unauthenticated_client.post("/api/emails", json=payload)
     assert res_no_key.status_code == 401
     assert "Invalid or missing API key" in res_no_key.json()["detail"]
 

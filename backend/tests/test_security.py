@@ -12,8 +12,8 @@ from app.config import (
 from app.prompts import sanitize_prompt_input, build_prompt
 from app.models import CorrectionRequest, InfoRequest, TestQueryRequest
 
-client = TestClient(app)
 AUTH_HEADERS = {"X-API-Key": API_AUTH_KEY}
+client = TestClient(app, headers=AUTH_HEADERS)
 
 @pytest.fixture(autouse=True)
 def reset_limiters():

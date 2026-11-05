@@ -1,7 +1,9 @@
 import type { Email, ProcessingResponse, HumanCorrection, CreateEmailPayload } from "./types";
 
-const BASE = import.meta.env.VITE_API_BASE_URL || "/api";
-const API_KEY = (import.meta.env.VITE_API_KEY as string) || "notion-poc-author-key-2026";
+// All browser requests go through the same-origin Vercel proxy. The proxy
+// adds the private backend API key server-side, so no credential is bundled
+// into the client JavaScript.
+const BASE = "/api/backend";
 
 export async function getEmails(): Promise<Email[]> {
   const res = await fetch(`${BASE}/emails`);
@@ -13,7 +15,6 @@ export async function createEmail(emailData: CreateEmailPayload): Promise<Email>
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": API_KEY,
     },
     body: JSON.stringify(emailData),
   });
