@@ -12,6 +12,10 @@ const HOP_BY_HOP_HEADERS = new Set([
   "content-length",
   "host",
   "transfer-encoding",
+  "content-encoding",
+  "accept-encoding",
+  "if-none-match",
+  "if-modified-since",
 ]);
 
 function readRequestBody(req: VercelRequest): Promise<Buffer> {
@@ -38,12 +42,29 @@ export default async function handler(
     });
   }
 
-  const pathParam = req.query.path;
-  const path = Array.isArray(pathParam)
+  const pathParam = req.query.path ?? req.query["...path"];
+  const rawPath = Array.isArray(pathParam)
     ? pathParam.join("/")
     : pathParam || "";
+  // Depending on the Vercel project routing configuration, catch-all params
+  // can include the parent `api` or `backend` segment. Strip those prefixes
+  // so BACKEND_API_URL can consistently end with `/api`.
+  const path = rawPath
+    .replace(/^\/+/, "")
+    .replace(/^api\/backend\//, "")
+    .replace(/^backend\//, "")
+    .replace(/^api\//, "");
   const incomingUrl = new URL(req.url || "/", "http://vercel-proxy.local");
-  const targetUrl = `${backendUrl}/${path}${incomingUrl.search}`;
+  // Vercel includes the catch-all route parameter in req.url as `?path=...`.
+  // It is an internal routing value and must not be forwarded upstream.
+  const forwardedQuery = new URLSearchParams(incomingUrl.searchParams);
+  for (const key of [...forwardedQuery.keys()]) {
+    if (key === "path" || key.endsWith("path")) {
+      forwardedQuery.delete(key);
+    }
+  }
+  const queryString = forwardedQuery.toString();
+  const targetUrl = `${backendUrl}/${path}${queryString ? `?${queryString}` : ""}`;
   const body = ["GET", "HEAD"].includes(req.method || "GET")
     ? undefined
     : await readRequestBody(req);
@@ -69,13 +90,16 @@ export default async function handler(
       }
     });
 
-    if (!upstream.body) {
-      return res.end();
+    const isProcessingStream = path.startsWith("process-stream/");
+    if (isProcessingStream && upstream.body) {
+      // Preserve SSE streaming for /process-stream/* instead of buffering the
+      // complete LangGraph response in the proxy.
+      return Readable.fromWeb(upstream.body as never).pipe(res);
     }
 
-    // Preserve SSE streaming for /process-stream/* instead of buffering the
-    // complete LangGraph response in the proxy.
-    return Readable.fromWeb(upstream.body as never).pipe(res);
+    // Buffer normal JSON/file responses so Vercel sends the complete body.
+    const responseBody = Buffer.from(await upstream.arrayBuffer());
+    return res.end(responseBody);
   } catch (error) {
     console.error("Backend proxy request failed:", error);
     return res.status(502).json({ detail: "Backend unavailable" });

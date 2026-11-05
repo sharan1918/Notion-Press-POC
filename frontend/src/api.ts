@@ -5,6 +5,11 @@ import type { Email, ProcessingResponse, HumanCorrection, CreateEmailPayload } f
 // into the client JavaScript.
 const BASE = "/api/backend";
 
+// Vercel's catch-all function is deployed as a single API segment. Encode
+// nested backend paths so routes such as triage-status/{job_id} reach it.
+const nestedPath = (...segments: string[]) =>
+  `${BASE}/${encodeURIComponent(segments.join("/"))}`;
+
 export async function getEmails(): Promise<Email[]> {
   const res = await fetch(`${BASE}/emails`);
   return res.json();
@@ -26,7 +31,7 @@ export async function createEmail(emailData: CreateEmailPayload): Promise<Email>
 }
 
 export async function processEmail(id: string): Promise<ProcessingResponse> {
-  const res = await fetch(`${BASE}/process/${id}`, { method: "POST" });
+  const res = await fetch(nestedPath("process", id), { method: "POST" });
   return res.json();
 }
 
@@ -44,7 +49,7 @@ export function streamProcessEmail(
 
   (async () => {
     try {
-      const response = await fetch(`${BASE}/process-stream/${id}`, {
+      const response = await fetch(nestedPath("process-stream", id), {
         signal: controller.signal,
         headers: { Accept: "text/event-stream" },
       });
@@ -105,12 +110,12 @@ export function streamProcessEmail(
 }
 
 export async function approveAction(threadId: string): Promise<ProcessingResponse> {
-  const res = await fetch(`${BASE}/approve/${threadId}`, { method: "POST" });
+  const res = await fetch(nestedPath("approve", threadId), { method: "POST" });
   return res.json();
 }
 
 export async function rejectAction(threadId: string): Promise<ProcessingResponse> {
-  const res = await fetch(`${BASE}/reject/${threadId}`, { method: "POST" });
+  const res = await fetch(nestedPath("reject", threadId), { method: "POST" });
   return res.json();
 }
 
@@ -119,7 +124,7 @@ export async function correctClassification(
   correctedIntent: string,
   notes: string
 ): Promise<ProcessingResponse> {
-  const res = await fetch(`${BASE}/correct/${threadId}`, {
+  const res = await fetch(nestedPath("correct", threadId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ corrected_intent: correctedIntent, notes }),
@@ -132,7 +137,7 @@ export async function provideInfo(
   additionalInfo: string,
   attachments: string[] = []
 ): Promise<ProcessingResponse> {
-  const res = await fetch(`${BASE}/provide-info/${threadId}`, {
+  const res = await fetch(nestedPath("provide-info", threadId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ additional_info: additionalInfo, attachments }),
@@ -170,7 +175,7 @@ export async function triageAllEmails(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise(resolve => setTimeout(resolve, pollInterval));
     try {
-      const statusRes = await fetch(`${BASE}/triage-status/${jobId}`);
+      const statusRes = await fetch(nestedPath("triage-status", jobId));
       if (!statusRes.ok) continue;
       const jobData = await statusRes.json();
       
@@ -221,19 +226,21 @@ export interface KnowledgeQueryResult {
 }
 
 export async function getKnowledgeStatus(): Promise<KnowledgeStatus> {
-  const res = await fetch(`${BASE}/knowledge/status`);
+  const res = await fetch(nestedPath("knowledge", "status"));
   if (!res.ok) throw new Error("Failed to fetch knowledge base status");
   return res.json();
 }
 
 export async function getKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
-  const res = await fetch(`${BASE}/knowledge/documents`);
+  const res = await fetch(nestedPath("knowledge", "documents"));
   if (!res.ok) throw new Error("Failed to list knowledge documents");
   return res.json();
 }
 
 export async function getKnowledgeChunks(filename?: string): Promise<KnowledgeChunk[]> {
-  const url = filename ? `${BASE}/knowledge/chunks?filename=${encodeURIComponent(filename)}` : `${BASE}/knowledge/chunks`;
+  const url = filename
+    ? `${nestedPath("knowledge", "chunks")}?filename=${encodeURIComponent(filename)}`
+    : nestedPath("knowledge", "chunks");
   const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to fetch knowledge chunks");
   return res.json();
@@ -248,7 +255,7 @@ export async function uploadKnowledgeDocument(file: File): Promise<{
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${BASE}/knowledge/upload`, {
+  const res = await fetch(nestedPath("knowledge", "upload"), {
     method: "POST",
     body: formData,
   });
@@ -265,7 +272,7 @@ export async function deleteKnowledgeDocument(filename: string): Promise<{
   deleted_chunks: number;
   status: KnowledgeStatus;
 }> {
-  const res = await fetch(`${BASE}/knowledge/documents/${encodeURIComponent(filename)}`, {
+  const res = await fetch(nestedPath("knowledge", "documents", filename), {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to delete knowledge document");
@@ -277,7 +284,7 @@ export async function clearKnowledgeBase(): Promise<{
   cleared_chunks: number;
   status: KnowledgeStatus;
 }> {
-  const res = await fetch(`${BASE}/knowledge/clear`, {
+  const res = await fetch(nestedPath("knowledge", "clear"), {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to clear knowledge base");
@@ -290,7 +297,7 @@ export async function quickSeedSamplePdf(): Promise<{
   chunks_indexed: number;
   status: KnowledgeStatus;
 }> {
-  const res = await fetch(`${BASE}/knowledge/quick-seed-sample`, {
+  const res = await fetch(nestedPath("knowledge", "quick-seed-sample"), {
     method: "POST",
   });
   if (!res.ok) throw new Error("Failed to quick-seed sample PDF");
@@ -302,7 +309,7 @@ export async function testKnowledgeQuery(query: string, top_k: number = 2): Prom
   results_count: number;
   results: KnowledgeQueryResult[];
 }> {
-  const res = await fetch(`${BASE}/knowledge/test-query`, {
+  const res = await fetch(nestedPath("knowledge", "test-query"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, top_k }),
@@ -312,5 +319,5 @@ export async function testKnowledgeQuery(query: string, top_k: number = 2): Prom
 }
 
 export function getSamplePdfDownloadUrl(): string {
-  return `${BASE}/knowledge/sample-pdf`;
+  return nestedPath("knowledge", "sample-pdf");
 }
