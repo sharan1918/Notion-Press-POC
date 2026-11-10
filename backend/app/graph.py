@@ -38,57 +38,48 @@ def _is_valid_api_key(key: str | None) -> bool:
     key = key.strip()
     return len(key) >= 15 and not key.startswith("your_") and not key.startswith("dummy_")
 
+def reset_llm_cache():
+    global _CACHED_LLMS, _CACHED_KEYS
+    _CACHED_LLMS = None
+    _CACHED_KEYS = None
+
 def get_llms():
     global _CACHED_LLMS, _CACHED_KEYS
     openrouter_key = os.getenv("OPENROUTER_API_KEY")
-    model_primary = os.getenv("OPENROUTER_PRIMARY_MODEL", "openai/gpt-oss-120b")
-    model_secondary = os.getenv("OPENROUTER_SECONDARY_MODEL", "google/gemini-3.6-flash")
-    model_tertiary = os.getenv("OPENROUTER_TERTIARY_MODEL", "openai/gpt-oss-20b")
     openrouter_base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     max_tokens = int(os.getenv("OPENROUTER_MAX_TOKENS", "1024"))
-    current_keys = (openrouter_key, model_primary, model_secondary, model_tertiary)
+    
+    from app.model_manager import get_ordered_model_ids, get_active_model_id
+    active_id = get_active_model_id()
+    ordered_ids = tuple(get_ordered_model_ids())
+    current_keys = (openrouter_key, active_id, ordered_ids)
     
     if _CACHED_LLMS is not None and _CACHED_KEYS == current_keys:
         return _CACHED_LLMS
     
-    primary = None
-    secondary = None
-    tertiary = None
+    llms = []
     if _is_valid_api_key(openrouter_key):
-        try:
-            primary = ChatOpenAI(
-                model=model_primary,
-                api_key=openrouter_key,
-                base_url=openrouter_base_url,
-                max_retries=0,
-                timeout=45.0,
-                max_tokens=max_tokens,
-            )
-            secondary = ChatOpenAI(
-                model=model_secondary,
-                api_key=openrouter_key,
-                base_url=openrouter_base_url,
-                max_retries=0,
-                timeout=45.0,
-                max_tokens=max_tokens,
-            )
-            tertiary = ChatOpenAI(
-                model=model_tertiary,
-                api_key=openrouter_key,
-                base_url=openrouter_base_url,
-                max_retries=0,
-                timeout=45.0,
-                max_tokens=max_tokens,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to initialize OpenRouter models: {e}")
-            primary = secondary = tertiary = None
+        for mid in ordered_ids:
+            try:
+                llm = ChatOpenAI(
+                    model=mid,
+                    api_key=openrouter_key,
+                    base_url=openrouter_base_url,
+                    max_retries=0,
+                    timeout=45.0,
+                    max_tokens=max_tokens,
+                )
+                llms.append(llm)
+            except Exception as e:
+                logger.warning(f"Failed to initialize OpenRouter model '{mid}': {e}")
             
-    _CACHED_LLMS = (primary, secondary, tertiary)
+    _CACHED_LLMS = tuple(llms)
     _CACHED_KEYS = current_keys
-    return primary, secondary, tertiary
+    return _CACHED_LLMS
 
 def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification, str]:
+    from app.model_manager import get_active_model
+    active_info = get_active_model()
     llms = get_llms()
     candidates = [llm for llm in llms if llm is not None]
     if not candidates:
@@ -97,6 +88,8 @@ def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification
     structured = candidates[0].with_structured_output(EmailClassification)
     fallbacks = [llm.with_structured_output(EmailClassification) for llm in candidates[1:]]
     result = structured.with_fallbacks(fallbacks).invoke(prompt)
+    model_name = active_info.get("name", "Active Primary Model")
+    state["active_model"] = model_name
     return result, "OpenRouter model fallback chain"
 
 def log(state: dict, message: str):
@@ -127,6 +120,7 @@ def ingest_email(state: EmailProcessingState) -> EmailProcessingState:
     state["approval_required"] = False
     state["missing_info_block"] = False
     state["human_decision"] = None
+    state["active_model"] = None
     state["draft_response"] = None
     state["knowledge_sources"] = None
     

@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
+import ModelSelector from "./ModelSelector";
+import type { LLMModelInfo } from "../types";
 
 interface HeaderProps {
   onOpenKnowledgeBase?: () => void;
+  onModelChanged?: (model: LLMModelInfo) => void;
 }
 
 export default function Header({
   onOpenKnowledgeBase,
+  onModelChanged,
 }: HeaderProps) {
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") === "dark" || 
@@ -41,6 +45,9 @@ export default function Header({
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2 shrink-0">
+        {/* Dynamic Model Switcher Dropdown */}
+        <ModelSelector onModelChanged={onModelChanged} />
+
         {/* Knowledge Base Button */}
         <button
           onClick={onOpenKnowledgeBase}

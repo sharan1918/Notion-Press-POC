@@ -77,16 +77,18 @@ def test_get_llms_initialization(monkeypatch):
     monkeypatch.setenv("OPENROUTER_PRIMARY_MODEL", "provider/primary-test")
     monkeypatch.setenv("OPENROUTER_SECONDARY_MODEL", "provider/secondary-test")
     monkeypatch.setenv("OPENROUTER_TERTIARY_MODEL", "provider/tertiary-test")
+    monkeypatch.setenv("OPENROUTER_QUATERNARY_MODEL", "provider/quaternary-test")
 
     with patch("app.graph.ChatOpenAI") as mock_chat_openai:
         clients = get_llms()
 
     assert all(client is not None for client in clients)
-    assert mock_chat_openai.call_count == 3
+    assert mock_chat_openai.call_count == 4
     assert [call.kwargs["model"] for call in mock_chat_openai.call_args_list] == [
         "provider/primary-test",
         "provider/secondary-test",
         "provider/tertiary-test",
+        "provider/quaternary-test",
     ]
     for call in mock_chat_openai.call_args_list:
         assert call.kwargs["api_key"] == "test-openrouter-key-12345"
