@@ -42,3 +42,4 @@ demo_walkthrough/
 /scripts/*
 !/scripts/run_benchmark.py
 !/scripts/benchmark_dataset.json
+!/scripts/compare_models.py

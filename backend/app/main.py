@@ -33,7 +33,11 @@ from app.config import (
 )
 from app.models import (
     CreateEmailRequest, CorrectionRequest, InfoRequest,
-    TriageRequest, TestQueryRequest
+    TriageRequest, TestQueryRequest, SelectModelRequest
+)
+from app.model_manager import (
+    get_supported_models, get_active_model,
+    set_active_model, get_active_model_id
 )
 
 
@@ -122,7 +126,7 @@ async def log_requests(request: Request, call_next):
 # The health endpoint must remain public for Northflank health checks. Every
 # other application API route is protected by the server-side API key. The
 # Vercel proxy supplies this header; browsers never receive the key.
-PUBLIC_API_PATHS = {"/api/health"}
+PUBLIC_API_PATHS = {"/api/health", "/api/models"}
 
 
 @app.middleware("http")
@@ -483,6 +487,28 @@ def get_triage_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+@app.get("/api/models")
+def list_models():
+    """Return all 4 supported models and currently selected primary model."""
+    return {
+        "models": get_supported_models(),
+        "active_model_id": get_active_model_id(),
+        "active_model": get_active_model(),
+    }
+
+@app.post("/api/models/select")
+def switch_primary_model(req: SelectModelRequest):
+    """Dynamically switch the primary model for email processing at runtime."""
+    try:
+        updated = set_active_model(req.model_id)
+        return {
+            "success": True,
+            "message": f"Primary model successfully switched to {updated['name']}",
+            "active_model": updated,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/health")
 def health():

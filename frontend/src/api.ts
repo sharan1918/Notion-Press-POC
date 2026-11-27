@@ -1,4 +1,7 @@
-import type { Email, ProcessingResponse, HumanCorrection, CreateEmailPayload } from "./types";
+import type {
+  Email, ProcessingResponse, HumanCorrection, CreateEmailPayload,
+  LLMModelInfo, ModelsResponse
+} from "./types";
 
 // All browser requests go through the same-origin Vercel proxy. The proxy
 // adds the private backend API key server-side, so no credential is bundled
@@ -321,3 +324,27 @@ export async function testKnowledgeQuery(query: string, top_k: number = 2): Prom
 export function getSamplePdfDownloadUrl(): string {
   return nestedPath("knowledge", "sample-pdf");
 }
+
+export async function getModels(): Promise<ModelsResponse> {
+  const res = await fetch(nestedPath("models"));
+  if (!res.ok) throw new Error("Failed to fetch available models");
+  return res.json();
+}
+
+export async function selectModel(modelId: string): Promise<{
+  success: boolean;
+  message: string;
+  active_model: LLMModelInfo;
+}> {
+  const res = await fetch(nestedPath("models", "select"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model_id: modelId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to switch primary model");
+  }
+  return res.json();
+}
+

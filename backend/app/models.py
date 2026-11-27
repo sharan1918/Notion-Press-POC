@@ -91,6 +91,7 @@ class EmailProcessingState(TypedDict):
     knowledge_sources: list[str] | None    # Titles of retrieved knowledge documents
 
     # Observability
+    active_model: str | None               # Name of primary model utilized for classification
     processing_log: list[str]              # Timestamped log of every state transition
     final_status: str                      # "executed" | "rejected" | "manual_review" | "error" | "pending_approval" | "pending_info" | "processing"
 
@@ -226,4 +227,9 @@ class TestQueryRequest(BaseModel):
         if not v_stripped:
             raise ValueError("Query string cannot be empty")
         return v_stripped
+
+
+class SelectModelRequest(BaseModel):
+    model_id: str = Field(..., min_length=1, max_length=100)
+
 

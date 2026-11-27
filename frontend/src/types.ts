@@ -69,7 +69,29 @@ export interface ProcessingResponse {
     processing_log?: string[];
     final_status?: "executed" | "rejected" | "manual_review" | "error" | "pending_approval" | "pending_info" | "processing";
     intake_result?: "spam_filtered" | "cache_hit" | null;
+    active_model?: string;
     draft_response?: string;
     knowledge_sources?: string[];
   };
 }
+
+export interface LLMModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  tier: string;
+  badge: string;
+  input_cost_per_m: string;
+  output_cost_per_m: string;
+  latency_badge: string;
+  description: string;
+  is_recommended: boolean;
+  is_active?: boolean;
+}
+
+export interface ModelsResponse {
+  models: LLMModelInfo[];
+  active_model_id: string;
+  active_model: LLMModelInfo;
+}
+
