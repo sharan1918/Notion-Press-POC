@@ -5,6 +5,9 @@
 .env.local
 !.env.example
 !**/.env.example
+k8s/secret.yaml
+k8s/secrets.yaml
+!k8s/secret.yaml.example
 
 # Python
 .venv/

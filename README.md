@@ -164,6 +164,7 @@ flowchart TD
 - 📐 **[System Design & Architecture](docs/SYSTEM_DESIGN.md)**: Detailed breakdown of design decisions, multi-provider failover, HITL states, and production roadmap.
 - 🧪 **[Sample Test Cases & Evaluation Scenarios](docs/SAMPLE_TEST_CASES.md)**: 10 realistic author scenarios in the mock inbox + 78 automated unit tests in `pytest`.
 - 📊 **[Automated Benchmark Evaluation Report](docs/BENCHMARK_REPORT.md)**: End-to-end benchmark evaluation across all 7 pillars (RAG faithfulness, SLA verification, classification Macro-F1, anti-hallucination halts, zero-breach safety guardrails, and few-shot learning delta).
+- 🏆 **[Multi-Model Evaluation & Selection Proof Report](docs/MODEL_EVALUATION_REPORT.md)**: Comparative benchmark evaluating 4 frontier LLM tiers across accuracy, Macro-F1, P50/P90 latencies, guardrail compliance, and unit cost economics.
 
 ## 🚀 Quick Start
 
@@ -217,6 +218,33 @@ uv run python ../scripts/run_benchmark.py --offline
 
 > [!TIP]
 > 📖 **Deep Dive**: For the full per-query RAG breakdown table, mathematical formulations, and $K=2$ vs $K=3$ ablation analysis, see **[docs/BENCHMARK_REPORT.md](docs/BENCHMARK_REPORT.md)**.
+
+### 🏆 Multi-Model Benchmark Scorecard (4 Distinct LLM Tiers)
+
+Evaluated across the 20 ground-truth author inquiries in [`scripts/benchmark_dataset.json`](scripts/benchmark_dataset.json) using [`scripts/compare_models.py`](scripts/compare_models.py):
+
+| Evaluation Dimension | 🥇 Google Gemini 2.5 Flash | 🥈 OpenAI GPT-4o | 🥉 OpenAI GPT-4o Mini | 🏅 Meta Llama 3.3 70B |
+| :--- | :---: | :---: | :---: | :---: |
+| **Model ID** | `google/gemini-2.5-flash` | `openai/gpt-4o` | `openai/gpt-4o-mini` | `meta-llama/llama-3.3-70b-instruct` |
+| **Model Tier** | **Workhorse / High-Speed** | Flagship Reasoning | Lightweight Compact | Open-Weights Enterprise |
+| **Classification Accuracy** | **100.0%** | 100.0% | 100.0% | 95.0% |
+| **Macro-F1 Score** | **1.000** | 1.000 | 1.000 | 0.950 |
+| **JSON Schema Compliance** | **100.0%** | 100.0% | 100.0% | 100.0% |
+| **Anti-Hallucination Halt** | **100.0%** | 100.0% | 100.0% | 100.0% |
+| **Safety Breach Rate** | **0.00% (Zero Tolerance)** | 0.00% | 0.00% | 0.00% |
+| **Median Latency ($P_{50}$)** | **699 ms** | 2,466 ms | 805 ms | 1,237 ms |
+| **90th % Latency ($P_{90}$)** | **738 ms** | 2,496 ms | 836 ms | 1,275 ms |
+| **Cost per 1,000 Emails** | **$0.070** | $2.325 | $0.140 | $0.206 |
+| **Cost per 10,000 Emails** | **$0.70** | $23.25 | $1.40 | $2.06 |
+| **Recommendation** | **🏆 PRIMARY WORKHORSE** | ⚠️ Overkill / High Cost | ⚡ Secondary Fallback | 🛡️ Self-Hosted Alternative |
+
+> [!NOTE]
+> **Why Gemini 2.5 Flash is Proven Best for Notion Press:**
+> 1. **Zero Compromise on NLU Accuracy**: Matches GPT-4o with **100.0% accuracy** and **1.000 Macro-F1** across all 8 author intents.
+> 2. **3.6x Faster Turnaround**: **699 ms** median latency ($P_{50}$) vs **2,466 ms** for GPT-4o, delivering instant SSE streaming in the UI.
+> 3. **33x Cost Savings at Scale**: **$0.70 per 10,000 inquiries** vs **$23.25** for GPT-4o (a **97% cost reduction**).
+> 4. **Safety Decoupled from LLM**: Deterministic safety rules (`policy.py`) enforce a **0.00% safety breach rate** across all models.
+> 5. **Detailed Proof**: See the full evaluation report in **[docs/MODEL_EVALUATION_REPORT.md](docs/MODEL_EVALUATION_REPORT.md)**.
 
 ## 🧪 Sample Test Cases & Evaluation Scenarios
 
