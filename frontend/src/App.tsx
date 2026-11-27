@@ -94,10 +94,23 @@ export default function App() {
           next.delete(id);
           return next;
         });
+        setProcessingState(prev => ({
+          ...prev,
+          [id]: {
+            thread_id: prev[id]?.thread_id || "",
+            state: {
+              ...(prev[id]?.state || {}),
+              email: emailObj,
+              final_status: "error",
+              processing_log: [...(prev[id]?.state?.processing_log || []), `Pipeline error: ${err?.message || err}`]
+            }
+          }
+        }));
         if (abortControllersRef.current[id] === cancel) {
           delete abortControllersRef.current[id];
         }
-      }
+      },
+      force
     );
 
     abortControllersRef.current[id] = cancel;
@@ -214,6 +227,11 @@ export default function App() {
     <div className="flex flex-col h-screen h-[100dvh] w-full bg-background text-foreground overflow-hidden transition-colors duration-300">
       <Header 
         onOpenKnowledgeBase={() => setIsKnowledgeBaseOpen(true)}
+        onModelChanged={() => {
+          if (selectedEmailId) {
+            startStreaming(selectedEmailId, true);
+          }
+        }}
       />
       
       {/* Main Content Area: Responsive Mobile Stack / Desktop Multi-Column */}

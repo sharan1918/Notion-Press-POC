@@ -55,7 +55,9 @@ export default function PipelineView({ state, isStreaming = false }: Props) {
       pending: isStreaming && !hasClassified && !skippedLLM && !skippedByCache,
       error: isError,
       skipped: skippedLLM || skippedByCache,
-      label: (skippedLLM || skippedByCache) ? "Skipped ($0.00)" : state.active_model ? `🤖 ${state.active_model}` : undefined
+      label: (skippedLLM || skippedByCache) ? "Skipped ($0.00)" : state.active_model ? (
+        `🤖 ${state.active_model}${state.classification_latency_ms ? ` • ${Math.round(state.classification_latency_ms)}ms` : ''}`
+      ) : undefined
     },
     { 
       name: "Determine Action", 

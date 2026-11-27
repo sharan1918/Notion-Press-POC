@@ -66,6 +66,7 @@ class EmailProcessingState(TypedDict):
 
     # Intake filter result
     intake_result: str | None              # "spam_filtered" | "cache_hit" | None (full pipeline)
+    force_llm: bool | None                 # Bypass semantic cache on manual re-analysis / model switch
 
     # Feedback context
     corrections: str                       # Formatted few-shot text from relevant past corrections
@@ -92,6 +93,7 @@ class EmailProcessingState(TypedDict):
 
     # Observability
     active_model: str | None               # Name of primary model utilized for classification
+    classification_latency_ms: float | None # Actual measured runtime latency in milliseconds
     processing_log: list[str]              # Timestamped log of every state transition
     final_status: str                      # "executed" | "rejected" | "manual_review" | "error" | "pending_approval" | "pending_info" | "processing"
 

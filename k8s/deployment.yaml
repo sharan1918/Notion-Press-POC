@@ -45,7 +45,7 @@ spec:
       containers:
         - name: backend-service
           # Uses your real built Notion Press backend image loaded into Kind
-          image: notionpress-backend:v1
+          image: notionpress-backend:v2
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
@@ -77,6 +77,17 @@ spec:
               value: "meta-llama/llama-3.3-70b-instruct"
             - name: OPENROUTER_EMBEDDING_MODEL
               value: "google/gemini-embedding-001"
+            - name: LANGCHAIN_TRACING_V2
+              value: "true"
+            - name: LANGCHAIN_PROJECT
+              value: "notion-press-poc"
+            - name: LANGCHAIN_ENDPOINT
+              value: "https://api.smith.langchain.com"
+            - name: LANGCHAIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: notionpress-secrets
+                  key: LANGCHAIN_API_KEY
             - name: CORS_ORIGINS
               value: "http://localhost:5173,https://notion-press-poc.vercel.app,*"
             - name: TRIAGE_CONCURRENCY
@@ -104,9 +115,13 @@ spec:
               port: 8000
             initialDelaySeconds: 15
             periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 6
           readinessProbe:
             httpGet:
               path: /api/health
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 3

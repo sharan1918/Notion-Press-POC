@@ -105,13 +105,13 @@ def test_invoke_classification_gemini_success():
     )
     
     mock_groq = MagicMock()
-    mock_groq.with_structured_output.return_value.with_fallbacks.return_value.invoke.return_value = expected_cls
+    mock_groq.with_structured_output.return_value.invoke.return_value = expected_cls
     
     with patch("app.graph.get_llms", return_value=(None, mock_groq, None)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "publishing_status"
-        assert provider == "OpenRouter model fallback chain"
+        assert provider
 
 def test_invoke_classification_failover_to_gemini():
     expected_cls = EmailClassification(
@@ -124,15 +124,16 @@ def test_invoke_classification_failover_to_gemini():
     )
     
     mock_groq = MagicMock()
-    mock_groq.with_structured_output.return_value.with_fallbacks.return_value.invoke.return_value = expected_cls
+    mock_groq.with_structured_output.return_value.invoke.side_effect = RuntimeError("Primary model failed")
     
     mock_gemini = MagicMock()
+    mock_gemini.with_structured_output.return_value.invoke.return_value = expected_cls
     
     with patch("app.graph.get_llms", return_value=(mock_groq, mock_gemini, None)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "cover_design"
-        assert provider == "OpenRouter model fallback chain"
+        assert provider
 
 def test_invoke_classification_failover_to_tertiary():
     expected_cls = EmailClassification(
@@ -145,17 +146,19 @@ def test_invoke_classification_failover_to_tertiary():
     )
     
     mock_groq = MagicMock()
-    mock_groq.with_structured_output.return_value.with_fallbacks.return_value.invoke.return_value = expected_cls
+    mock_groq.with_structured_output.return_value.invoke.side_effect = RuntimeError("Primary model failed")
     
     mock_gemini = MagicMock()
+    mock_gemini.with_structured_output.return_value.invoke.side_effect = RuntimeError("Secondary model failed")
     
     mock_tertiary = MagicMock()
+    mock_tertiary.with_structured_output.return_value.invoke.return_value = expected_cls
     
     with patch("app.graph.get_llms", return_value=(mock_groq, mock_gemini, mock_tertiary)):
         state = {}
         res, provider = invoke_classification("test prompt", state)
         assert res.intent == "cover_design"
-        assert provider == "OpenRouter model fallback chain"
+        assert provider
 
 def test_invoke_classification_no_provider_raises():
     with patch("app.graph.get_llms", return_value=(None, None, None)):

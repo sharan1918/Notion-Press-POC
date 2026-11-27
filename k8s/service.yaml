@@ -7,6 +7,10 @@ metadata:
     app: notionpress-backend
 spec:
   type: NodePort
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
   selector:
     app: notionpress-backend
   ports:
