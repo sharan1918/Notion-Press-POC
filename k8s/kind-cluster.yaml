@@ -1,0 +1,18 @@
+# 3-Node Kubernetes Cluster Configuration for Kind
+# Topology: 1 Control-Plane (Master) + 2 Worker Nodes (Simulating real multi-server architecture)
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  # Master Node (API Server, Controller Manager, Scheduler, etcd)
+  - role: control-plane
+    extraPortMappings:
+      # Exposes NodePort 30080 directly to localhost:30080 on your Mac
+      - containerPort: 30080
+        hostPort: 30080
+        protocol: TCP
+
+  # Worker Server 1 (Runs application Pods)
+  - role: worker
+
+  # Worker Server 2 (Runs application Pods for High Availability)
+  - role: worker
