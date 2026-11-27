@@ -369,6 +369,8 @@ async def _process_triage_job(job_id: str, target_ids: list[str]):
 
     async def _triage_single(email_id: str):
         async with sem:
+            # Yield event loop briefly before starting work so health probes can be served
+            await asyncio.sleep(0.05)
             try:
                 email = get_sample_email(email_id)
             except ValueError:
@@ -435,6 +437,9 @@ async def _process_triage_job(job_id: str, target_ids: list[str]):
                         "processing_log": [f"Triage error: {str(e)}"],
                     },
                 }
+            finally:
+                # Yield control back to event loop immediately after invocation
+                await asyncio.sleep(0.05)
 
     # Execute all email triage tasks concurrently with semaphore concurrency control
     await asyncio.gather(*(_triage_single(eid) for eid in target_ids))

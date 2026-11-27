@@ -177,11 +177,22 @@ export async function triageAllEmails(
   const jobId = data.job_id;
   const pollInterval = 1000; // 1s avoids excessive status traffic in production
   const maxAttempts = 120; // up to 2 minutes
+  let notFoundCount = 0;
   
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise(resolve => setTimeout(resolve, pollInterval));
     try {
       const statusRes = await fetch(nestedPath("triage-status", jobId));
+      if (statusRes.status === 404) {
+        notFoundCount++;
+        // If the job is confirmed gone (e.g. backend pod restarted), exit immediately
+        if (notFoundCount >= 3) {
+          console.warn(`[Triage] Job ${jobId} not found after ${notFoundCount} checks; aborting poll.`);
+          break;
+        }
+        continue;
+      }
+      notFoundCount = 0;
       if (!statusRes.ok) continue;
       const jobData = await statusRes.json();
       
