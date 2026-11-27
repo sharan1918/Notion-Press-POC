@@ -108,6 +108,14 @@ def set_active_model(model_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"Could not reset graph LLM cache: {e}")
 
+    # Clear semantic intent cache to ensure subsequent triage runs use the newly selected model
+    try:
+        from app.intent_cache import intent_cache
+        intent_cache.clear()
+        logger.info("[ModelManager] Cleared semantic intent cache for fresh model evaluation")
+    except Exception as e:
+        logger.warning(f"Could not clear intent cache: {e}")
+
     logger.info(f"[ModelManager] Primary model switched to: {model_id} ({MODEL_MAP[model_id]['name']})")
     return get_active_model()
 

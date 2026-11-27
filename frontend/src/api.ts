@@ -33,8 +33,9 @@ export async function createEmail(emailData: CreateEmailPayload): Promise<Email>
   return res.json();
 }
 
-export async function processEmail(id: string): Promise<ProcessingResponse> {
-  const res = await fetch(nestedPath("process", id), { method: "POST" });
+export async function processEmail(id: string, force: boolean = false): Promise<ProcessingResponse> {
+  const url = force ? `${nestedPath("process", id)}?force=true` : nestedPath("process", id);
+  const res = await fetch(url, { method: "POST" });
   return res.json();
 }
 
@@ -42,7 +43,8 @@ export function streamProcessEmail(
   id: string,
   onUpdate: (data: ProcessingResponse) => void,
   onComplete?: () => void,
-  onError?: (err: any) => void
+  onError?: (err: any) => void,
+  force: boolean = false
 ): () => void {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
@@ -52,7 +54,8 @@ export function streamProcessEmail(
 
   (async () => {
     try {
-      const response = await fetch(nestedPath("process-stream", id), {
+      const url = force ? `${nestedPath("process-stream", id)}?force=true` : nestedPath("process-stream", id);
+      const response = await fetch(url, {
         signal: controller.signal,
         headers: { Accept: "text/event-stream" },
       });

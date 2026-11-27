@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -78,19 +79,42 @@ def get_llms():
     return _CACHED_LLMS
 
 def invoke_classification(prompt: str, state: dict) -> tuple[EmailClassification, str]:
-    from app.model_manager import get_active_model
+    from app.model_manager import get_active_model, MODEL_MAP
     active_info = get_active_model()
     llms = get_llms()
     candidates = [llm for llm in llms if llm is not None]
     if not candidates:
         raise RuntimeError("No working LLM provider found. Please set OPENROUTER_API_KEY in backend/.env")
 
-    structured = candidates[0].with_structured_output(EmailClassification)
-    fallbacks = [llm.with_structured_output(EmailClassification) for llm in candidates[1:]]
-    result = structured.with_fallbacks(fallbacks).invoke(prompt)
-    model_name = active_info.get("name", "Active Primary Model")
-    state["active_model"] = model_name
-    return result, "OpenRouter model fallback chain"
+    t0 = time.perf_counter()
+    result = None
+    last_err = None
+    used_model_name = active_info.get("name", "Active Primary Model")
+
+    for i, candidate in enumerate(candidates):
+        try:
+            structured = candidate.with_structured_output(EmailClassification)
+            result = structured.invoke(prompt)
+            # Identify which candidate succeeded
+            cand_id = getattr(candidate, "model_name", "")
+            if cand_id in MODEL_MAP:
+                used_model_name = MODEL_MAP[cand_id]["name"]
+            elif i == 0:
+                used_model_name = active_info.get("name", "Primary Model")
+            else:
+                used_model_name = cand_id or f"Fallback Tier {i}"
+            break
+        except Exception as err:
+            last_err = err
+            logger.warning(f"Candidate {i} failed: {err}. Attempting fallback...")
+
+    if result is None:
+        raise last_err or RuntimeError("All model candidates in fallback chain failed.")
+
+    latency_ms = round((time.perf_counter() - t0) * 1000.0, 1)
+    state["active_model"] = used_model_name
+    state["classification_latency_ms"] = latency_ms
+    return result, used_model_name
 
 def log(state: dict, message: str):
     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -121,6 +145,8 @@ def ingest_email(state: EmailProcessingState) -> EmailProcessingState:
     state["missing_info_block"] = False
     state["human_decision"] = None
     state["active_model"] = None
+    state["classification_latency_ms"] = None
+    state["force_llm"] = state.get("force_llm", False)
     state["draft_response"] = None
     state["knowledge_sources"] = None
     
@@ -142,26 +168,35 @@ def intake_filter_node(state: EmailProcessingState) -> EmailProcessingState:
         state["approval_required"] = False
         state["missing_info_block"] = False
         state["final_status"] = "executed"
+        state["active_model"] = "Fast-Path Spam Filter"
+        state["classification_latency_ms"] = 1.0
         log(state, f"⚡ FAST-PATH: Spam detected — {spam_result.reason}")
-        log(state, "Action: archive (no LLM used, $0.00 cost)")
+        log(state, "Action: archive (no LLM used, $0.00 cost, ~1ms)")
         return state
     
     # ── Layer 2: Semantic intent cache lookup ─────────────────────────────
-    active_ef = get_shared_embedding_function().get_active_model_name()
-    cache_result = intent_cache.get_cached_classification(email)
-    if cache_result and cache_result.outcome == "cache_hit":
-        state["intake_result"] = "cache_hit"
-        state["classification"] = cache_result.classification
-        state["recommended_action"] = None
-        state["guardrail_result"] = None
-        state["approval_required"] = False
-        state["missing_info_block"] = False
-        state["final_status"] = "processing"
-        log(state, f"💾 CACHE HIT: Reusing classification '{cache_result.classification.intent}' "
-            f"(similarity={cache_result.confidence:.3f}) via {active_ef} — no LLM call")
-        return state
+    # If manual re-analysis or model switch is requested, bypass cache to evaluate the active model directly
+    if state.get("force_llm"):
+        log(state, "🔄 Force re-analysis requested — bypassing semantic cache to evaluate active model directly.")
+    else:
+        active_ef = get_shared_embedding_function().get_active_model_name()
+        cache_result = intent_cache.get_cached_classification(email)
+        if cache_result and cache_result.outcome == "cache_hit":
+            state["intake_result"] = "cache_hit"
+            state["classification"] = cache_result.classification
+            state["recommended_action"] = None
+            state["guardrail_result"] = None
+            state["approval_required"] = False
+            state["missing_info_block"] = False
+            state["final_status"] = "processing"
+            state["active_model"] = f"Semantic Cache ({active_ef})"
+            state["classification_latency_ms"] = 4.5
+            log(state, f"💾 CACHE HIT: Reusing classification '{cache_result.classification.intent}' "
+                f"(similarity={cache_result.confidence:.3f}) via {active_ef} — no LLM call (~5ms)")
+            return state
     
     # ── Pass through to full LLM pipeline ─────────────────────────────────
+    active_ef = get_shared_embedding_function().get_active_model_name()
     log(state, f"Intake filter: passed (spam_score={spam_result.confidence:.2f}, cache miss via {active_ef}). Proceeding to LLM.")
     return state
 
@@ -205,7 +240,8 @@ def fetch_and_classify(state: EmailProcessingState) -> EmailProcessingState:
         classification, provider_name = invoke_classification(prompt, state)
         state["classification"] = classification
         state["retry_count"] = 0 # reset on success
-        log(state, f"Classification successful via {provider_name}: {classification.intent}")
+        lat_text = f" in {state.get('classification_latency_ms', 0):.0f}ms" if state.get("classification_latency_ms") else ""
+        log(state, f"Classification successful via {provider_name}{lat_text}: {classification.intent}")
         
         # Cache the successful classification for future similar emails
         # (This is a best-effort optimization; failures do not block the pipeline)

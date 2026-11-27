@@ -70,6 +70,7 @@ export interface ProcessingResponse {
     final_status?: "executed" | "rejected" | "manual_review" | "error" | "pending_approval" | "pending_info" | "processing";
     intake_result?: "spam_filtered" | "cache_hit" | null;
     active_model?: string;
+    classification_latency_ms?: number;
     draft_response?: string;
     knowledge_sources?: string[];
   };

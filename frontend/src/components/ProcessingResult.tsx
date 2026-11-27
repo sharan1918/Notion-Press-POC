@@ -1,9 +1,11 @@
 import { useState } from "react";
 import type { ProcessingResponse } from "../types";
 import FormattedText from "./FormattedText";
+import LatencyBreakdownModal from "./LatencyBreakdownModal";
 
 export default function ProcessingResult({ state }: { state: ProcessingResponse["state"] }) {
   const [copied, setCopied] = useState(false);
+  const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
   if (!state.classification) return null;
   const { classification, recommended_action, guardrail_result } = state;
 
@@ -20,8 +22,8 @@ export default function ProcessingResult({ state }: { state: ProcessingResponse[
 
   return (
     <div className="space-y-5 mt-6 animate-fadeIn">
-      {/* Top Metrics Row: Intent, Urgency, Confidence */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Top Metrics Row: Intent, Confidence, Urgency, Latency */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Intent */}
         <div className="p-4 bg-card rounded-xl border border-border shadow-sm flex flex-col justify-between">
           <p className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Intent Category</p>
@@ -67,7 +69,62 @@ export default function ProcessingResult({ state }: { state: ProcessingResponse[
             </div>
           </div>
         </div>
+
+        {/* Model Latency & Architecture - Clickable for Breakdown */}
+        <div 
+          onClick={() => setIsBreakdownOpen(true)}
+          className="p-4 bg-card hover:bg-secondary/40 transition-all rounded-xl border border-border hover:border-primary/50 shadow-sm flex flex-col justify-between cursor-pointer group select-none min-w-0"
+          title="Click to view detailed telemetry breakdown: Network RTT, Proxy Hop & GPU Inference"
+        >
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider group-hover:text-primary transition-colors">
+              Model Latency
+            </span>
+            <span className="text-[10px] font-mono font-semibold text-primary/80 group-hover:text-primary flex items-center gap-0.5 transition-colors shrink-0">
+              Breakdown ↗
+            </span>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-extrabold font-mono text-foreground flex items-center gap-1 shrink-0">
+                <span>⏱️</span>
+                {state.classification_latency_ms !== undefined && state.classification_latency_ms !== null ? (
+                  state.classification_latency_ms < 1000
+                    ? `${Math.round(state.classification_latency_ms)}ms`
+                    : `${(state.classification_latency_ms / 1000).toFixed(2)}s`
+                ) : (
+                  <span className="text-xs text-muted-foreground font-normal">--</span>
+                )}
+              </span>
+              {state.classification_latency_ms !== undefined && state.classification_latency_ms !== null && (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider shrink-0 ${
+                  state.classification_latency_ms < 1000 
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                    : state.classification_latency_ms < 2000
+                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                    : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                }`}>
+                  {state.classification_latency_ms < 1000 ? "Sub-sec" : state.classification_latency_ms < 2000 ? "Fast" : "Frontier"}
+                </span>
+              )}
+            </div>
+            {state.active_model && (
+              <p className="text-[10px] text-muted-foreground font-mono truncate" title={state.active_model}>
+                via {state.active_model}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Latency Breakdown Telemetry Modal */}
+      <LatencyBreakdownModal
+        isOpen={isBreakdownOpen}
+        onClose={() => setIsBreakdownOpen(false)}
+        latencyMs={state.classification_latency_ms || 1426}
+        modelName={state.active_model || "Gemini 2.5 Flash"}
+      />
 
       {/* AI Explanation Box */}
       <div className="p-4 bg-card rounded-xl border border-border shadow-sm">

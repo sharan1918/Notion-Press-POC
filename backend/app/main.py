@@ -207,7 +207,7 @@ def create_email(
 
 
 @app.get("/api/process-stream/{email_id}")
-async def process_email_stream(email_id: str, request: Request):
+async def process_email_stream(email_id: str, request: Request, force: bool = False):
     client_ip = get_client_ip(request)
     if not process_rate_limiter.check(client_ip):
         raise HTTPException(
@@ -222,7 +222,7 @@ async def process_email_stream(email_id: str, request: Request):
 
     thread_id = f"thread_{email_id}_{uuid.uuid4().hex[:12]}"
     config = {"configurable": {"thread_id": thread_id}}
-    initial_state = {"email": email}
+    initial_state = {"email": email, "force_llm": force}
 
     async def event_generator():
         queue = asyncio.Queue()
@@ -276,7 +276,7 @@ async def process_email_stream(email_id: str, request: Request):
     )
 
 @app.post("/api/process/{email_id}")
-def process_email(email_id: str, request: Request):
+def process_email(email_id: str, request: Request, force: bool = False):
     client_ip = get_client_ip(request)
     if not process_rate_limiter.check(client_ip):
         raise HTTPException(
@@ -292,7 +292,7 @@ def process_email(email_id: str, request: Request):
     thread_id = f"thread_{email_id}_{uuid.uuid4().hex[:12]}"
     config = {"configurable": {"thread_id": thread_id}}
     
-    initial_state = {"email": email}
+    initial_state = {"email": email, "force_llm": force}
     # Invoke the graph
     result = graph.invoke(initial_state, config)
     return {"thread_id": thread_id, "state": result}
